@@ -117,7 +117,8 @@ def main():
         if os.path.exists(rcache):
             d = np.load(rcache, allow_pickle=True)
             results[m] = dict(population=d["population"], F=d["F"],
-                              hv_hist=d["hv_hist"], wall_time=float(d["wall_time"]))
+                              hv_hist=d["hv_hist"], wall_time=float(d["wall_time"]),
+                              _from_cache=True)
             print(f"[cache] loaded {m} results from {rcache}")
             continue
         print(f"\n===== running framework with {m.upper()} crossover =====")
@@ -132,6 +133,7 @@ def main():
             res = run_framework(problem, rcfg, crossover=vae)
         else:
             print("unknown method", m); continue
+        res["_from_cache"] = False
         results[m] = res
         np.savez(rcache, population=res["population"], F=res["F"],
                  hv_hist=res["hv_hist"], wall_time=res["wall_time"])
@@ -215,6 +217,17 @@ def _git_commit():
         return None
 
 
+def _git_dirty():
+    """True if the working tree has uncommitted changes; None if not a repo."""
+    try:
+        out = subprocess.check_output(
+            ["git", "status", "--porcelain"], cwd=os.path.dirname(__file__),
+            stderr=subprocess.DEVNULL).decode()
+        return len(out.strip()) > 0
+    except Exception:
+        return None
+
+
 def _sha256(path):
     if not os.path.exists(path):
         return None
@@ -242,6 +255,7 @@ def write_manifest(cfg, methods, results, problem, cache, tag):
         "argv": sys.argv,
         "methods": methods,
         "git_commit": _git_commit(),
+        "git_dirty": _git_dirty(),
         "package_versions": _pkg_versions(),
         "config": {k: v for k, v in cfg.items()
                    if isinstance(v, (int, float, str, bool, type(None)))},
@@ -260,6 +274,7 @@ def write_manifest(cfg, methods, results, problem, cache, tag):
         F = res["F"]; hv = res["hv_hist"]
         manifest["results"][m] = {
             "output_npz": f"res_{m}_{tag}.npz",
+            "loaded_from_cache": bool(res.get("_from_cache", False)),
             "wall_time_s": round(float(res["wall_time"]), 2),
             "min_J1": round(float(F[:, 0].min()), 4),
             "min_J2": round(float(F[:, 1].min()), 4),

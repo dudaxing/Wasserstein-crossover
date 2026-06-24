@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 from wasserstein import (convolutional_barycenter, wasserstein_crossover,   # noqa
                          eps_to_sigma, adaptive_eps, population_distance_matrix)
 from selection import (dominates, fast_non_dominated_sort, crowding_distance,  # noqa
-                       select, hypervolume)
+                       select, hypervolume, farthest_point_order)
 
 
 # --------------------------------------------------------------------------- #
@@ -145,6 +145,29 @@ def test_crossover_range():
           "min-max scaled to span [0,1]")
 
 
+def test_crossover_endpoints_bounded():
+    print("[wasserstein_crossover lambda endpoints bounded]")
+    n = 24
+    A, B = _disk(n, 8, 12, 4).ravel(), _disk(n, 16, 12, 5).ravel()
+    for lam in (0.0, 1.0, 1e-3, 1.0 - 1e-3):
+        child = wasserstein_crossover(A, B, (n, n), lam=lam, sigma=1.5,
+                                      n_iter=200, tol=1e-12,
+                                      rng=np.random.default_rng(0))
+        check(np.all(np.isfinite(child)), f"lambda={lam}: finite (no NaN/Inf)")
+        check(child.min() >= -1e-9 and child.max() <= 1 + 1e-9,
+              f"lambda={lam}: bounded in [0,1]")
+    # convention: lam is the weight on parent A (weights=[lam, 1-lam]),
+    # so lam~1 leans toward A and lam~0 leans toward B.
+    near_A = wasserstein_crossover(A, B, (n, n), lam=1.0 - 1e-3, sigma=1.5,
+                                   n_iter=300, tol=1e-12, rng=np.random.default_rng(0))
+    near_B = wasserstein_crossover(A, B, (n, n), lam=1e-3, sigma=1.5,
+                                   n_iter=300, tol=1e-12, rng=np.random.default_rng(0))
+    check(_corr(near_A.reshape(n, n), A.reshape(n, n))
+          > _corr(near_A.reshape(n, n), B.reshape(n, n)), "lambda~1 -> closer to A")
+    check(_corr(near_B.reshape(n, n), B.reshape(n, n))
+          > _corr(near_B.reshape(n, n), A.reshape(n, n)), "lambda~0 -> closer to B")
+
+
 # --------------------------------------------------------------------------- #
 #  Selection
 # --------------------------------------------------------------------------- #
@@ -166,6 +189,32 @@ def test_non_dominated_sort():
     P = F[fronts[0]]
     mutual = all(not dominates(a, b) for a in P for b in P if not np.array_equal(a, b))
     check(mutual, "front 0 points mutually non-dominated")
+
+
+def test_front_stable_under_dominated():
+    print("[front unaffected by a dominated point]")
+    F = np.array([[1.0, 4.0], [2.0, 3.0], [3.0, 2.0], [4.0, 1.0]])  # all Pareto
+    f0 = set(fast_non_dominated_sort(F)[0])
+    # add a clearly dominated point
+    F2 = np.vstack([F, [5.0, 5.0]])
+    fronts2 = fast_non_dominated_sort(F2)
+    check(set(fronts2[0]) == f0, "front 0 unchanged when a dominated point is added")
+    check(4 in fronts2[1], "the dominated point lands in a later front")
+
+
+def test_farthest_point_deterministic():
+    print("[farthest_point_order determinism]")
+    X = np.array([[0.0, 0.0], [1.0, 0.0], [0.0, 1.0], [1.0, 1.0],
+                  [0.5, 0.5], [0.9, 0.1]])
+    front = [0, 1, 2, 3, 4, 5]
+    o1 = farthest_point_order(X, front)
+    o2 = farthest_point_order(X, front)
+    check(o1 == o2, "deterministic: identical ordering across calls")
+    check(sorted(o1) == sorted(front), "ordering is a permutation of the input")
+    # with some points already selected, ordering still deterministic
+    o3 = farthest_point_order(X, [1, 2, 4], already=np.array([0, 3]))
+    o4 = farthest_point_order(X, [1, 2, 4], already=np.array([0, 3]))
+    check(o3 == o4 and sorted(o3) == [1, 2, 4], "deterministic with `already` set")
 
 
 def test_select_elitism():
@@ -226,9 +275,10 @@ if __name__ == "__main__":
         test_eps_to_sigma, test_adaptive_eps, test_population_distance_matrix,
         test_barycenter_mass_nonneg, test_barycenter_swap_symmetry,
         test_barycenter_identical_parents, test_barycenter_weight_extremes,
-        test_crossover_range,
-        test_dominates, test_non_dominated_sort, test_select_elitism,
-        test_crowding_distance,
+        test_crossover_range, test_crossover_endpoints_bounded,
+        test_dominates, test_non_dominated_sort,
+        test_front_stable_under_dominated, test_farthest_point_deterministic,
+        test_select_elitism, test_crowding_distance,
         test_hypervolume_analytic, test_hypervolume_monotone,
     ]
     for t in tests:
