@@ -16,7 +16,7 @@ the full pipeline runs on a laptop CPU in minutes; pass --paper for the exact
 paper settings (slow).  The initial population is cached and reused across
 crossover operators for a fair comparison.
 """
-import os, sys, argparse, time
+import os, sys, argparse, time, json, hashlib, platform, subprocess, datetime
 import numpy as np
 import matplotlib
 matplotlib.use("Agg")
@@ -173,8 +173,9 @@ def main():
         make_stress_comparison(problem, designs, initF,
                                results["wasserstein"], shape)
 
-    # ---- text summary ----
-    summarize(results, initF)
+    # ---- provenance manifest + text summary ----
+    manifest_name = write_manifest(cfg, methods, results, problem, cache, tag)
+    summarize(results, initF, manifest_name)
 
 
 def make_stress_comparison(problem, designs, initF, res, shape):
@@ -205,7 +206,75 @@ def make_stress_comparison(problem, designs, initF, res, shape):
     plt.close(fig); print("saved fig8")
 
 
-def summarize(results, initF):
+def _git_commit():
+    try:
+        return subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=os.path.dirname(__file__),
+            stderr=subprocess.DEVNULL).decode().strip()
+    except Exception:
+        return None
+
+
+def _sha256(path):
+    if not os.path.exists(path):
+        return None
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _pkg_versions():
+    vers = {"python": platform.python_version()}
+    for mod in ("numpy", "scipy", "matplotlib", "jax"):
+        try:
+            vers[mod] = __import__(mod).__version__
+        except Exception:
+            vers[mod] = None
+    return vers
+
+
+def write_manifest(cfg, methods, results, problem, cache, tag):
+    """Provenance record for one run -> results/run_manifest_<tag>.json."""
+    manifest = {
+        "timestamp": datetime.datetime.now().isoformat(timespec="seconds"),
+        "argv": sys.argv,
+        "methods": methods,
+        "git_commit": _git_commit(),
+        "package_versions": _pkg_versions(),
+        "config": {k: v for k, v in cfg.items()
+                   if isinstance(v, (int, float, str, bool, type(None)))},
+        "seed": cfg.get("seed"),
+        "problem": {
+            "nelx": problem.mesh.nelx, "nely": problem.mesh.nely,
+            "n_elements": problem.n, "grid_shape": list(problem.grid_shape),
+            "hard_binarize": problem.hard_binarize,
+            "sel_mode": cfg.get("sel_mode"),
+        },
+        "initial_population_cache": {
+            "path": os.path.relpath(cache, OUT), "sha256": _sha256(cache)},
+        "results": {},
+    }
+    for m, res in results.items():
+        F = res["F"]; hv = res["hv_hist"]
+        manifest["results"][m] = {
+            "output_npz": f"res_{m}_{tag}.npz",
+            "wall_time_s": round(float(res["wall_time"]), 2),
+            "min_J1": round(float(F[:, 0].min()), 4),
+            "min_J2": round(float(F[:, 1].min()), 4),
+            "hv_first": round(float(hv[0]), 5),
+            "hv_last": round(float(hv[-1]), 5),
+            "hv_improvement_pct": round(100 * (hv[-1] / hv[0] - 1), 3),
+        }
+    path = os.path.join(OUT, f"run_manifest_{tag}.json")
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(manifest, f, ensure_ascii=False, indent=2)
+    print("saved", path)
+    return os.path.basename(path)
+
+
+def summarize(results, initF, manifest_name=None):
     lines = ["", "=" * 64, "SUMMARY  (2D cracked-plate stress minimization)", "=" * 64]
     fr0 = fast_non_dominated_sort(initF)[0]
     lines.append(f"initial      : min J1={initF[:,0].min():.3f}  |front0|={len(fr0)}")
@@ -214,6 +283,11 @@ def summarize(results, initF):
         imp = 100 * (hv[-1] / hv[0] - 1)
         lines.append(f"{m:12s}: min J1={F[:,0].min():.3f}  "
                      f"HV improvement={imp:5.1f}%  wall={res['wall_time']:.1f}s")
+    lines.append("-" * 64)
+    lines.append("NOTE: single-seed run; HV ranking is sensitive to the shared "
+                 "extreme point and should not be over-interpreted (see README).")
+    if manifest_name:
+        lines.append(f"provenance: results/{manifest_name}")
     txt = "\n".join(lines)
     print(txt)
     with open(os.path.join(OUT, "summary.txt"), "w") as f:
