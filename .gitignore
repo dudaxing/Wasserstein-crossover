@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.ipynb_checkpoints/
+.venv/
+venv/
+
+# Working outputs: regeneratable caches, logs, large binaries
+results/
+
+# Paper-derived material (copyright: do NOT redistribute)
+paper_text.txt
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

@@ -1,0 +1,10 @@
+# Core (required)
+numpy>=1.24
+scipy>=1.10
+matplotlib>=3.6
+
+# VAE-based crossover baseline (Section 5.1 comparison)
+jax>=0.4            # CPU build is fine
+
+# Optional: only used to rip figures out of the source PDF for reference
+# pymupdf>=1.23
