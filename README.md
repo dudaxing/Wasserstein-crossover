@@ -219,6 +219,14 @@ diagram-Wasserstein is 0 for identical designs and separates topologies; the
 full 40×40 distance matrix on the real population costs ≈1–2 s (negligible vs.
 HF evaluation).
 
+Framework run (demo config, Wasserstein crossover, **single seed**):
+`sel_mode="ph_wasserstein"` gives min J₁ = 17.80 / HV +2.0%, essentially
+**indistinguishable** from the default L2 diversity (17.16 / +2.3%). On this
+compressed structured-grid surrogate the second-stage diversity metric does not
+materially change framework-level outcomes; distinguishing the two would require
+a multi-seed study. The value here is that the paper's exact mechanism is now
+implemented and runnable, not a quantitative win on this surrogate.
+
 ---
 
 ## The benchmark (Section 5.1, Fig. 4a)
