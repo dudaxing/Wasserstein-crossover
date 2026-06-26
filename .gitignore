@@ -17,3 +17,7 @@ paper_text.txt
 Thumbs.db
 .vscode/
 .idea/
+
+# local TDA validation venv
+.ttvenv/
+results/pip_*.log

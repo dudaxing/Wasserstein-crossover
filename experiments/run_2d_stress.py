@@ -92,8 +92,13 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--paper", action="store_true", help="exact paper settings (slow)")
     ap.add_argument("--methods", default="wasserstein,vae,linear")
+    ap.add_argument("--sel-mode", default=None,
+                    choices=["diversity", "crowding", "ph_wasserstein"],
+                    help="within-rank diversity sort (default: config value)")
     args = ap.parse_args()
     cfg = get_config(args)
+    if args.sel_mode:
+        cfg["sel_mode"] = args.sel_mode
     methods = args.methods.split(",")
 
     problem = StressPlateProblem(nelx=cfg["nelx"], R_h=cfg["R_h"])
@@ -110,7 +115,9 @@ def main():
 
     results = {}
     base_cfg = dict(cfg); base_cfg["init_designs"] = designs; base_cfg["init_info"] = info
-    tag = f"{cfg['nelx']}_t{cfg['t_max']}"
+    # keep default ("diversity") cache names backward-compatible; suffix others
+    sm = cfg.get("sel_mode", "diversity")
+    tag = f"{cfg['nelx']}_t{cfg['t_max']}" + ("" if sm == "diversity" else f"_{sm}")
 
     for m in methods:
         rcache = os.path.join(OUT, f"res_{m}_{tag}.npz")

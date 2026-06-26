@@ -167,7 +167,8 @@ def run_framework(problem, cfg, crossover="wasserstein", rng=None, logger=print)
 
         # ---- selection -> keep Npop ----
         Xc = np.array(cand)
-        sel = select(Fc, cfg["N_pop"], X=Xc, mode=cfg.get("sel_mode", "diversity"))
+        sel = select(Fc, cfg["N_pop"], X=Xc, mode=cfg.get("sel_mode", "diversity"),
+                     grid_shape=problem.grid_shape)
         Theta = [cand[i] for i in sel]
         F_pop = Fc[sel]
 

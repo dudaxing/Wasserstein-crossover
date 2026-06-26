@@ -121,22 +121,63 @@ def farthest_point_order(X, front, already=None):
     return order
 
 
+def farthest_point_order_from_D(D, front, already=None):
+    """Greedy farthest-point ordering using a precomputed (global) distance
+    matrix ``D`` instead of an L2 metric.  ``front`` and ``already`` index into
+    ``D``.  Used by the persistent-homology Wasserstein diversity sort.
+    """
+    front = list(front)
+    if already is not None and len(already) > 0:
+        mind = np.array([min(D[f, a] for a in already) for f in front], dtype=float)
+    else:
+        mind = np.full(len(front), np.inf)
+    order = []
+    remaining = list(range(len(front)))
+    while remaining:
+        if np.all(np.isinf(mind[remaining])):
+            pick = remaining[0]
+        else:
+            pick = remaining[int(np.argmax(mind[remaining]))]
+        order.append(front[pick])
+        remaining.remove(pick)
+        p = front[pick]
+        for k in remaining:
+            mind[k] = min(mind[k], D[p, front[k]])
+    return order
+
+
 # --------------------------------------------------------------------------- #
 #  Environmental selection (truncate population to size Npop)
 # --------------------------------------------------------------------------- #
-def select(F, Npop, X=None, mode="diversity"):
+def select(F, Npop, X=None, mode="diversity", grid_shape=None, D=None):
     """Select Npop survivors from a candidate set by two-stage ranking.
 
     Stage 1: non-dominated sorting (Pareto rank).
     Stage 2: within the last (partial) front, order by `mode`:
-        "crowding"  -> NSGA-II crowding distance (objective space),
-        "diversity" -> farthest-point in design space (needs X).
+        "crowding"       -> NSGA-II crowding distance (objective space);
+        "diversity"      -> farthest-point in design space (needs X);
+        "ph_wasserstein" -> farthest-point under the persistent-homology
+                            Wasserstein distance (paper's 2nd stage; needs
+                            `grid_shape` and the torch_topological backend, or a
+                            precomputed distance matrix `D`).  Falls back to
+                            "diversity" if the backend is unavailable.
     Returns the indices of the selected survivors.
     """
     F = np.asarray(F, dtype=float)
     M = len(F)
     if M <= Npop:
         return np.arange(M)
+
+    # persistent-homology Wasserstein distance matrix over all candidates
+    if mode == "ph_wasserstein" and D is None and X is not None:
+        try:
+            from topo_selection import ph_distance_matrix
+            D = ph_distance_matrix(X, grid_shape)
+        except Exception as e:               # backend missing -> graceful fallback
+            print(f"[selection] ph_wasserstein unavailable ({e}); "
+                  f"falling back to design-space diversity")
+            mode = "diversity"
+
     fronts = fast_non_dominated_sort(F)
     selected = []
     for fr in fronts:
@@ -144,8 +185,12 @@ def select(F, Npop, X=None, mode="diversity"):
             selected.extend(fr)
         else:
             need = Npop - len(selected)
-            if mode == "diversity" and X is not None:
-                order = farthest_point_order(X, fr, already=np.array(selected, dtype=int))
+            already = np.array(selected, dtype=int)
+            if mode == "ph_wasserstein" and D is not None:
+                order = farthest_point_order_from_D(D, fr, already=already)
+                selected.extend(order[:need])
+            elif mode == "diversity" and X is not None:
+                order = farthest_point_order(X, fr, already=already)
                 selected.extend(order[:need])
             else:
                 cd = crowding_distance(F, fr)

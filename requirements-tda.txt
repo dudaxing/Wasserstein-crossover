@@ -1,0 +1,41 @@
+# ============================================================================
+# Optional TDA environment for the paper-faithful selection second stage
+#   sel_mode = "ph_wasserstein"  (persistent homology + persistence-diagram
+#   Wasserstein distance, via torch_topological)
+#
+# WHY A SEPARATE ENV:
+#   torch_topological needs PyTorch + POT.  POT has no Python-3.14 wheel and its
+#   source build is broken on numpy>=2 (removed numpy.distutils).  Use Python
+#   3.13 (or 3.12), where torch, POT, and gudhi all ship wheels.  The rest of the
+#   project runs on the default 3.14 env; this env is only for ph_wasserstein.
+#
+# SETUP (Windows / PowerShell or bash; adjust the launcher as needed):
+#   py -3.13 -m venv .ttvenv
+#   .ttvenv/Scripts/python -m pip install -U pip
+#   .ttvenv/Scripts/python -m pip install torch POT numpy scipy matplotlib gudhi
+#   # torch-topological pins POT<0.9 (un-buildable on new Python); install it
+#   # WITHOUT deps and rely on the modern POT/gudhi already installed above:
+#   .ttvenv/Scripts/python -m pip install --no-deps torch-topological
+#
+# RUN:
+#   .ttvenv/Scripts/python experiments/test_topo_selection.py        # tests
+#   .ttvenv/Scripts/python experiments/run_2d_stress.py \
+#       --methods wasserstein --sel-mode ph_wasserstein              # framework
+#
+# COMPATIBILITY NOTES (handled automatically in src/topo_selection.py, no edits
+# to third-party packages):
+#   * `gph` (giotto-ph) is stubbed: torch_topological.nn imports it for
+#     VietorisRips, which we never use.
+#   * torch_topological 0.1.9 passes a torch.Tensor to gudhi.CubicalComplex,
+#     which current gudhi (>=3.11) rejects; we convert it to numpy on the call.
+# ============================================================================
+
+# Pinned to versions verified to work together on Python 3.13:
+torch==2.12.1
+POT==0.9.6.post1
+gudhi==3.12.0
+numpy>=2.0
+scipy>=1.10
+matplotlib>=3.6
+# install separately with --no-deps (see SETUP above):
+# torch-topological==0.1.9
