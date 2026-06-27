@@ -219,13 +219,26 @@ diagram-Wasserstein is 0 for identical designs and separates topologies; the
 full 40×40 distance matrix on the real population costs ≈1–2 s (negligible vs.
 HF evaluation).
 
-Framework run (demo config, Wasserstein crossover, **single seed**):
-`sel_mode="ph_wasserstein"` gives min J₁ = 17.80 / HV +2.0%, essentially
-**indistinguishable** from the default L2 diversity (17.16 / +2.3%). On this
-compressed structured-grid surrogate the second-stage diversity metric does not
-materially change framework-level outcomes; distinguishing the two would require
-a multi-seed study. The value here is that the paper's exact mechanism is now
-implemented and runnable, not a quantitative win on this surrogate.
+**Multi-seed verdict** (5 seeds, `t_max=20`, Wasserstein crossover, identical
+initial population; [`experiments/multiseed_selection.py`](experiments/multiseed_selection.py)).
+Paper-faithful `ph_wasserstein` vs. the default L2 diversity are **statistically
+indistinguishable** on every robust metric (paired t-test across seeds):
+
+| metric | L2 diversity | ph_wasserstein | Δ (ph − L2), paired |
+|---|---|---|---|
+| min J₁ | 17.48 ± 0.64 | 17.48 ± 0.29 | +0.01 (p = 0.98) |
+| best J₁ at V ≈ 0.30 | 23.40 ± 0.66 | 23.54 ± 0.67 | +0.14 (p = 0.48) |
+| HV (fixed ref. point) | 68.51 ± 0.24 | 68.48 ± 0.14 | −0.03 (p = 0.81) |
+
+So on this compressed structured-grid surrogate, the choice of second-stage
+diversity metric does **not** materially change framework-level outcomes — the
+first-stage non-dominated sorting and the (mesh-limited) LF↔HF gap dominate. This
+does **not** contradict the paper, whose advantage stems from the fine
+body-fitted HF evaluation; it shows the second-stage tie-breaker has little
+leverage *in this surrogate*. (Mild, non-significant aside: `ph_wasserstein` had
+lower seed-to-seed variance on min J₁, 0.29 vs. 0.64.) The value delivered is
+that the paper's exact PH-Wasserstein mechanism is implemented, validated, and
+runnable — not a quantitative win on this surrogate.
 
 ---
 
