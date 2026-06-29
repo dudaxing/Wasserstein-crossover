@@ -75,7 +75,12 @@ def run_framework(problem, cfg, crossover="wasserstein", rng=None, logger=print)
             cand = list(Theta_tmp)
             Fc = F_tmp
             init_objs = F_tmp.copy()
-            ref = 1.1 * np.max(init_objs, axis=0)   # reference point (Eq. 9)
+            # reference point (Eq. 9): base it on the FEASIBLE (finite) initial
+            # designs only -- a single infeasible seed would otherwise push the
+            # reference to +inf and make every hypervolume inf.
+            fin = np.isfinite(init_objs).all(axis=1)
+            base = init_objs[fin] if fin.any() else init_objs
+            ref = 1.1 * np.max(base, axis=0)
         else:
             cand = list(Theta) + list(Theta_tmp)
             Fc = np.vstack([F_pop, F_tmp])

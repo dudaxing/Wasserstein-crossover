@@ -476,16 +476,54 @@ def hf_lbracket_stress(field, xn, yn, geom=None, rng_vec=None, seed=0,
         r_fillet=g.get("r_fillet", 0.0))
     # passive solid (load block) forced solid
     rho = rho.copy(); rho[ps] = 1.0
-    fixed_dofs, F, _, _ = lbracket_bcs(p, BDY, lpd, lload, g["F0"], h=h)
+    fixed_dofs, F, fixed_nodes, load_nodes = lbracket_bcs(p, BDY, lpd, lload, g["F0"], h=h)
+    solid = rho > 0.5
+    # element areas (CST), computed from the mesh so J2 is available even when
+    # the solve is skipped by the robustness guard below.
+    v1 = p[t[:, 1]] - p[t[:, 0]]
+    v2 = p[t[:, 2]] - p[t[:, 0]]
+    area = 0.5 * np.abs(v1[:, 0] * v2[:, 1] - v1[:, 1] * v2[:, 0])
+    design_area = L * L - (L - lpd) * (L - lpd)        # L-shape area
+    J2 = float(area[solid].sum() / design_area) if solid.any() else 0.0
+
+    # Robustness guard (prevents C-level solver segfaults on degenerate
+    # offspring): only solve if the SOLID material connects the load to the
+    # support through a single connected component.  Otherwise the global
+    # stiffness is (near-)singular -> mark infeasible without solving.
+    if not _load_path_ok(p, t, solid, fixed_nodes, load_nodes):
+        J1 = float("inf")
+        if return_mesh:
+            return J1, J2, dict(p=p, t=t, vm=np.zeros(len(t)), rho=rho,
+                                U=np.zeros(2 * len(p)), area=area, cen=cen)
+        return J1, J2
+
     U, vm, sig, area = fea_t3(p, t, rho, fixed_dofs, F,
                               g["E0"], g["Emin"], g["nu"])
-    solid = rho > 0.5
     J1 = float(vm[solid].max()) if solid.any() else float("inf")
-    design_area = L * L - (L - lpd) * (L - lpd)        # L-shape area
-    J2 = float(area[solid].sum() / design_area)
     if return_mesh:
         return J1, J2, dict(p=p, t=t, vm=vm, rho=rho, U=U, area=area, cen=cen)
     return J1, J2
+
+
+def _load_path_ok(p, t, solid, fixed_nodes, load_nodes):
+    """True iff some fixed node and some load node lie in the same connected
+    component of the solid sub-mesh (i.e. a real load path exists)."""
+    from scipy.sparse import coo_matrix
+    from scipy.sparse.csgraph import connected_components
+    if not solid.any():
+        return False
+    st = t[solid]
+    ii = np.concatenate([st[:, 0], st[:, 1], st[:, 2]])
+    jj = np.concatenate([st[:, 1], st[:, 2], st[:, 0]])
+    NP = len(p)
+    A = coo_matrix((np.ones(len(ii)), (ii, jj)), shape=(NP, NP))
+    _, lab = connected_components(A + A.T, directed=False)
+    sol = set(np.unique(st).tolist())
+    fsup = [n for n in fixed_nodes if n in sol]
+    fload = [n for n in load_nodes if n in sol]
+    if not fsup or not fload:
+        return False
+    return not set(lab[fsup]).isdisjoint(set(lab[fload]))
 
 
 if __name__ == "__main__":

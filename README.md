@@ -18,12 +18,16 @@ a **body-fitted-mesh high-fidelity (HF) stress model** ported from
 > **⚠️ Status / honesty.** This is a *prototype*, not a 1:1 numerical
 > reproduction of either paper. The most defensible result is the **operator
 > level** (the Wasserstein barycenter transports material and can produce
-> offspring that beat their parents). The **L-bracket framework-level numbers are
-> being re-established**: an external review found two P0 integration bugs in the
-> body-fitted HF (the fixed support became void, and the applied load scaled with
-> mesh spacing). Both are now fixed and verified (below); **earlier L-bracket
-> improvement numbers were computed on the buggy HF and are retracted.** A clean
-> re-run is what now decides whether the EA actually improves designs here.
+> offspring that beat their parents). An external review found two P0 integration
+> bugs in the body-fitted HF (the fixed support became void; the applied load
+> scaled with mesh spacing); both are now fixed and verified (below), and a
+> connectivity guard makes the HF robust to disconnected offspring (no more
+> solver segfaults). **The clean re-run verdict is negative:** on the
+> physically-correct sharp-corner L-bracket with a stress LF, the Wasserstein-
+> crossover EA does **not** meaningfully improve designs (HV +0.0%, matched-volume
+> best-J₁ flat except one within-noise point). The earlier "−32 %" improvement
+> numbers were artifacts of the buggy HF plus a fillet and are **retracted**. See
+> [§12 of the project review](ADVERSARIAL_PROJECT_REVIEW.md) for the mechanism.
 
 ---
 
@@ -70,6 +74,7 @@ re-entrant corner):
 |---|---|---|
 | `_to_hf_field` zero-filled the domain boundary → fixed support became `Emin` void → structure floating | edge-clamp the LF→HF interpolation so material reaches the boundary | fixed nodes incident to a solid triangle **0/33 → 15/34**; **max\|U\| 8.1e8 → 2.8e2** |
 | `lbracket_bcs` applied `−F0/lload` per node → total load scaled with mesh spacing (−0.5 at the EA's `h=2`) | consistent nodal loads (tributary length) | total Fy = **−1.0 at every spacing** (0.5/1/2/3) |
+| disconnected offspring → singular `spsolve` → **C-level segfault** (uncatchable in Python) crashed the run at t=3 | `_load_path_ok` connectivity guard: skip the solve (J₁=inf) unless solid joins support↔load in one component | floating / split designs return `inf` (no crash); full run completes (exit 0) |
 
 ## Layout & quick start
 
@@ -89,7 +94,12 @@ python experiments/run_lbracket.py       # L-bracket Wasserstein-crossover EA (s
 
 ## Honest limitations (tracked)
 
-- L-bracket EA improvement claims are **pending the clean re-run** on the fixed HF.
+- L-bracket EA **does not improve designs** in the clean re-run (sharp corner +
+  stress LF + fixed HF): HV +0.0 %, matched-volume best-J₁ flat. Root cause is a
+  near-zero LF↔HF gap (stress LF seeds are already near stress-optimal) — barycenter
+  blends of stress-optimal parents are systematically worse, and ~half are
+  disconnected. The decisive next experiment is a crossover ablation (Wasserstein
+  vs linear vs none).
 - HF is a **boundary-refined Delaunay** with centroid solid/void classification —
   not a constrained contour-conforming mesh.
 - Mesh-to-mesh noise (~3–5% CV) is reduced by seed-averaging, not eliminated;
