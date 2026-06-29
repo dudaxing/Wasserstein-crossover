@@ -242,6 +242,41 @@ runnable — not a quantitative win on this surrogate.
 
 ---
 
+## Body-fitted-mesh HF model (DPTO port, in progress)
+
+To obtain a *true* maximum-stress HF on a smooth, boundary-conforming mesh (the
+capability the structured-grid substitute lacks), [`src/bodyfitted.py`](src/bodyfitted.py)
+ports the body-fitted stress evaluation of
+
+> Z. Zhuang, Y. Xiong, Y. He, Y.M. Xie, "A novel topology optimization method for
+> enhanced stress distribution using density projection and body-fitted mesh",
+> *Engineering Structures* 349 (2026) 121854 (DPTO).
+
+from MATLAB to Python (original code © the DPTO authors; not redistributed here).
+Pipeline: density field → 0.5 iso-contour (extract + clean) → **body-fitted
+triangular mesh** (hex background + size-function rejection + DistMesh
+node-moving) → **linear constant-strain-triangle (CST) plane-stress FEA** →
+per-triangle von Mises → max stress (J₁) and volume fraction (J₂), on the
+**L-bracket** benchmark.
+
+Validated ([`experiments/test_bodyfitted.py`](experiments/test_bodyfitted.py)):
+CST passes a constant-stress **patch test** exactly (errors ~1e-15); the mesh is
+well-shaped (median min-angle ≈ 47°, no slivers); and on a solid L-bracket the
+maximum von Mises lands exactly at the **re-entrant corner** — correct physics.
+
+<p align="center">
+  <img src="assets/bodyfitted_mesh.png" width="55%"/>
+  <img src="assets/bodyfitted_stress.png" width="41%"/>
+</p>
+
+*Left: body-fitted mesh conforming to the material contour (refined near
+boundaries). Right: von Mises field — stress concentrates at the re-entrant
+corner.*
+
+> Status: the HF evaluator is built and validated. Wiring it into the EA as the
+> L-bracket HF model (L-bracket LF initial population + framework integration) is
+> the next step.
+
 ## The benchmark (Section 5.1, Fig. 4a)
 
 A 2×2 plate in horizontal tension on its top strips, symmetric about the vertical
