@@ -25,14 +25,18 @@ def main():
     ap.add_argument("--nxo", type=int, default=16)
     ap.add_argument("--r-fillet", type=float, default=10.0)
     ap.add_argument("--hf-seeds", type=int, default=3)
-    ap.add_argument("--tag", default="fillet")
+    ap.add_argument("--lf-method", default="stress", choices=["stress", "compliance"])
+    ap.add_argument("--lf-maxiter", type=int, default=60)
+    ap.add_argument("--lf-move", type=float, default=0.1)
+    ap.add_argument("--tag", default="stressLF")
     args = ap.parse_args()
     tag = args.tag
 
     prob = LBracketProblem(nelx_lf=75, hf_h=2.0, hf_minedge=3.0, hf_iter=80,
-                           r_fillet=args.r_fillet, hf_seeds=args.hf_seeds)
+                           r_fillet=args.r_fillet, hf_seeds=args.hf_seeds,
+                           lf_method=args.lf_method)
     cfg = dict(seed=0, n_s1=3, n_s2=6, R_min=2 * prob.mesh.h, R_max=5 * prob.mesh.h,
-               V_min=0.30, V_max=0.55, lf_maxiter=40, lf_move=0.2,
+               V_min=0.30, V_max=0.55, lf_maxiter=args.lf_maxiter, lf_move=args.lf_move,
                N_pop=args.npop, N_xo=args.nxo, t_max=args.tmax,
                eps_min=5.0, eps_max=50.0, wc_iter=300, wc_tol=1e-8,
                sel_mode="diversity")

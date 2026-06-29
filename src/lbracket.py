@@ -17,7 +17,8 @@ from __future__ import annotations
 import numpy as np
 from scipy.interpolate import RegularGridInterpolator
 
-from topopt import Mesh, FEM, build_density_filter, apply_filter, filter_chain
+from topopt import (Mesh, FEM, build_density_filter, apply_filter, filter_chain,
+                    lf_optimize_stress)
 import bodyfitted as bf
 
 
@@ -100,8 +101,10 @@ def lf_optimize_compliance(mesh, fem, H, Hs, V, passive, maxiter=40, move=0.2,
 class LBracketProblem:
     def __init__(self, nelx_lf=75, L=150.0, lpd=60.0, lload=6.0, penal=3.0,
                  hf_h=2.0, hf_minedge=3.0, hf_maxedge=40.0, hf_iter=80,
-                 load=1.0, r_fillet=10.0, hf_seeds=5):
+                 load=1.0, r_fillet=10.0, hf_seeds=5,
+                 lf_method="stress", lf_P=8.0, lf_q=0.5):
         self.L, self.lpd, self.lload, self.r_fillet = L, lpd, lload, r_fillet
+        self.lf_method, self.lf_P, self.lf_q = lf_method, lf_P, lf_q
         self.mesh, self.passive = make_lbracket(nelx_lf, L, lpd, r_fillet)
         self.fixed, self.F = lbracket_bc(self.mesh, L, lpd, lload, load)
         self.fem = FEM(self.mesh, self.fixed, self.F, penal=penal)
@@ -132,9 +135,14 @@ class LBracketProblem:
             H, Hs = build_density_filter(self.mesh, R=R)
             for b in s2:
                 V = V_min + (V_max - V_min) * b
-                rho, x = lf_optimize_compliance(self.mesh, self.fem, H, Hs, V,
-                                                self.passive, maxiter=maxiter,
-                                                move=move)
+                if self.lf_method == "stress":
+                    rho, x = lf_optimize_stress(
+                        self.mesh, self.fem, H, Hs, V, P=self.lf_P, q=self.lf_q,
+                        maxiter=maxiter, move=move, passive=self.passive)
+                else:
+                    rho, x = lf_optimize_compliance(self.mesh, self.fem, H, Hs, V,
+                                                    self.passive, maxiter=maxiter,
+                                                    move=move)
                 designs.append(rho.copy())
                 info.append((R, V))
                 k += 1

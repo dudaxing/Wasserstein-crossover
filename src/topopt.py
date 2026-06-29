@@ -299,20 +299,30 @@ class FEM:
 # --------------------------------------------------------------------------- #
 def lf_optimize_stress(mesh, fem, H, Hs, V, P=8.0, q=0.5,
                        x_init=None, maxiter=80, move=0.05, tol=1e-3,
-                       verbose=False):
+                       passive=None, verbose=False):
     """Density-based stress minimization with a volume constraint via MMA.
 
     minimize  (sum_e sigma_e^P)^(1/P)
-    s.t.      mean(rho_phys) - V <= 0,  0<=gamma<=1.
-    Returns the optimized design field gamma (flattened, in [0,1]).
+    s.t.      vol_fraction(design region) - V <= 0,  0<=gamma<=1.
+
+    `passive` (bool mask) forces those elements to void (rho=0); the volume
+    constraint and seeding are taken over the *design* (non-passive) region.
+    Returns (rho_phys, x) flattened.
     """
     n = mesh.nel
+    if passive is None:
+        passive = np.zeros(n, dtype=bool)
+    design = ~passive
+    ndesign = max(int(design.sum()), 1)
     if x_init is None:
-        x = np.full(n, V)
+        x = np.zeros(n)
+        x[design] = V
     else:
         x = x_init.copy()
+    x[passive] = 0.0
     xmin = np.zeros((n, 1))
     xmax = np.ones((n, 1))
+    xmax[passive, 0] = 1e-6              # pin passive elements to (near) void
     xold1 = x.reshape(-1, 1).copy()
     xold2 = x.reshape(-1, 1).copy()
     low = xmin.copy()
@@ -323,20 +333,21 @@ def lf_optimize_stress(mesh, fem, H, Hs, V, P=8.0, q=0.5,
     d = np.zeros((m, 1))
 
     # normalize objective by its initial value for numerical conditioning
-    rho0 = apply_filter(H, Hs, x)
+    rho0 = apply_filter(H, Hs, x); rho0[passive] = 0.0
     J0, _, _, _ = fem.pnorm_stress(rho0, P, q)
     J0 = max(J0, 1e-12)
 
     Jprev = None
     for it in range(maxiter):
         rho = apply_filter(H, Hs, x)
+        rho[passive] = 0.0                       # enforce passive void
         J, dJdrho, sigma, U = fem.pnorm_stress(rho, P, q)
         f0 = J / J0
         df0 = filter_chain(H, Hs, dJdrho) / J0
 
-        vol = rho.mean()
+        vol = rho[design].sum() / ndesign        # volume fraction over design region
         g1 = vol / V - 1.0
-        dg1 = filter_chain(H, Hs, np.full(n, 1.0 / (n * V)))
+        dg1 = filter_chain(H, Hs, design.astype(float) / (ndesign * V))
 
         xmma, *_rest, low, upp = mmasub(
             m, n, it + 1, x.reshape(-1, 1), xmin, xmax, xold1, xold2,
@@ -352,4 +363,5 @@ def lf_optimize_stress(mesh, fem, H, Hs, V, P=8.0, q=0.5,
             print(f"   it={it:3d}  J(pnorm)={J:9.4f}  vol={vol:6.3f}  ch={change:.4f}")
         if it > 10 and change < tol:
             break
-    return apply_filter(H, Hs, x), x  # return physical and design fields
+    rho_final = apply_filter(H, Hs, x); rho_final[passive] = 0.0
+    return rho_final, x  # return physical and design fields
