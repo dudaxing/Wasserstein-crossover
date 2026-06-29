@@ -186,16 +186,26 @@ def select(F, Npop, X=None, mode="diversity", grid_shape=None, D=None):
         else:
             need = Npop - len(selected)
             already = np.array(selected, dtype=int)
+
+            def keep_extremes(order):
+                # elitism: always retain the per-objective best points of `fr`
+                # (NSGA-II gives boundary points infinite crowding distance).
+                Ffr = F[fr]
+                ext = [fr[int(np.argmin(Ffr[:, k]))] for k in range(Ffr.shape[1])]
+                seen, out = set(), []
+                for idx in ext + list(order):
+                    if idx not in seen:
+                        seen.add(idx); out.append(idx)
+                return out
+
             if mode == "ph_wasserstein" and D is not None:
-                order = farthest_point_order_from_D(D, fr, already=already)
-                selected.extend(order[:need])
+                order = keep_extremes(farthest_point_order_from_D(D, fr, already=already))
             elif mode == "diversity" and X is not None:
-                order = farthest_point_order(X, fr, already=already)
-                selected.extend(order[:need])
+                order = keep_extremes(farthest_point_order(X, fr, already=already))
             else:
-                cd = crowding_distance(F, fr)
+                cd = crowding_distance(F, fr)        # already keeps extremes (inf)
                 order = [fr[i] for i in np.argsort(-cd)]
-                selected.extend(order[:need])
+            selected.extend(order[:need])
             break
     return np.array(selected, dtype=int)
 

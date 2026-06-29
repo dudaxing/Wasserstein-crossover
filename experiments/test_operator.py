@@ -232,6 +232,20 @@ def test_select_elitism():
     check(len(sel_c) == 12, "crowding mode also returns N")
 
 
+def test_select_keeps_objective_extremes():
+    print("[select keeps per-objective extremes (elitism)]")
+    rng = np.random.default_rng(7)
+    # 40 mutually non-dominated points (a convex-ish front) -> front0 > Npop
+    a = np.linspace(0, 1, 40)
+    F = np.column_stack([a, (1 - a) ** 1.5]) + 1e-3 * rng.random((40, 2))
+    X = rng.random((40, 10))
+    imin0, imin1 = int(np.argmin(F[:, 0])), int(np.argmin(F[:, 1]))
+    for mode in ("diversity", "crowding"):
+        sel = set(select(F, 12, X=X, mode=mode).tolist())
+        check(imin0 in sel and imin1 in sel,
+              f"{mode}: both per-objective best points retained")
+
+
 def test_crowding_distance():
     print("[crowding_distance]")
     F = np.array([[0.0, 1.0], [0.25, 0.6], [0.5, 0.4], [1.0, 0.0]])
@@ -278,7 +292,8 @@ if __name__ == "__main__":
         test_crossover_range, test_crossover_endpoints_bounded,
         test_dominates, test_non_dominated_sort,
         test_front_stable_under_dominated, test_farthest_point_deterministic,
-        test_select_elitism, test_crowding_distance,
+        test_select_elitism, test_select_keeps_objective_extremes,
+        test_crowding_distance,
         test_hypervolume_analytic, test_hypervolume_monotone,
     ]
     for t in tests:
