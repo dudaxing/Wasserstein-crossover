@@ -282,9 +282,33 @@ redistributed here.)
 boundaries). Right: von Mises field — stress concentrates at the re-entrant
 corner.*
 
-> Status: the HF evaluator is built and validated. Wiring it into the EA as the
-> L-bracket HF model (L-bracket LF initial population + framework integration) is
-> the next step.
+### EA integration ([`src/lbracket.py`](src/lbracket.py), [`experiments/run_lbracket.py`](experiments/run_lbracket.py))
+
+The body-fitted HF is wired into the EA as `LBracketProblem`: **LF** = compliance
+OC on a structured L-bracket grid with the passive void (seeded over filter
+radius / volume for diversity); each LF / offspring density is resampled onto the
+HF node grid and scored by the body-fitted true max von Mises. The pipeline runs
+end-to-end (~0.9 s per HF evaluation at the demo resolution):
+
+<p align="center"><img src="assets/lbracket_lf_hf.png" width="70%"/></p>
+
+*An LF compliance design (left) and its body-fitted HF von Mises field (right).*
+
+**Honest negative result.** On this L-bracket setup the EA does **not** improve
+the useful designs: best max-stress is unchanged (min J₁ 0.2636 → 0.2636 over 15
+generations), and the hypervolume gain (+6%) comes only from extending the front
+into the degenerate low-volume / high-stress corner, not from relieving stress.
+
+<p align="center"><img src="assets/lbracket_results.png" width="85%"/></p>
+
+The root cause is **not** a bug in the (MATLAB-verified) HF; it is that the
+objective, as posed, gives the EA almost nothing to exploit — see the adversarial
+review below. In short: the max von Mises is pinned by the geometrically **fixed,
+sharp re-entrant corner** (a stress singularity present in every design), it is a
+**raw max** (not DPTO's smooth p-norm) so it is dominated by single-element
+singular spikes, and it carries **mesh-to-mesh noise** because every design is
+independently remeshed. These are addressable (fillet the corner; use p-norm;
+de-noise the mesh) but were surfaced rather than papered over.
 
 ## The benchmark (Section 5.1, Fig. 4a)
 

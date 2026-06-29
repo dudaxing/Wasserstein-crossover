@@ -420,7 +420,7 @@ LBRACKET = dict(L=150.0, lpd=60.0, lload=6.0, h=1.0, minedge=2.0, maxedge=40.0,
 
 
 def hf_lbracket_stress(field, xn, yn, geom=None, rng_vec=None, seed=0,
-                       return_mesh=False):
+                       return_mesh=False, n_iter=200):
     """Body-fitted high-fidelity evaluation for the L-bracket.
 
     field : (ny,nx) density on the node grid (xn,yn); 1=solid, 0=void.
@@ -441,7 +441,7 @@ def hf_lbracket_stress(field, xn, yn, geom=None, rng_vec=None, seed=0,
     c = clean_contour(segs, g["d1"], g["d2"])
     p, t, pv, ps, pd, rho, cen = generate_bodyfitted_mesh(
         c, BDY, lpd, lload, h, g["minedge"], g["maxedge"],
-        dens_interp=dens_interp, rng_vec=rng_vec, seed=seed)
+        dens_interp=dens_interp, rng_vec=rng_vec, seed=seed, n_iter=n_iter)
     # passive solid (load block) forced solid
     rho = rho.copy(); rho[ps] = 1.0
     fixed_dofs, F, _, _ = lbracket_bcs(p, BDY, lpd, lload, g["F0"])
