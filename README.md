@@ -302,13 +302,27 @@ into the degenerate low-volume / high-stress corner, not from relieving stress.
 <p align="center"><img src="assets/lbracket_results.png" width="85%"/></p>
 
 The root cause is **not** a bug in the (MATLAB-verified) HF; it is that the
-objective, as posed, gives the EA almost nothing to exploit — see the adversarial
-review below. In short: the max von Mises is pinned by the geometrically **fixed,
-sharp re-entrant corner** (a stress singularity present in every design), it is a
-**raw max** (not DPTO's smooth p-norm) so it is dominated by single-element
-singular spikes, and it carries **mesh-to-mesh noise** because every design is
-independently remeshed. These are addressable (fillet the corner; use p-norm;
-de-noise the mesh) but were surfaced rather than papered over.
+objective, as posed, gives the EA almost nothing to exploit (see
+[`ADVERSARIAL_REVIEW.md`](ADVERSARIAL_REVIEW.md)): the max von Mises is pinned by
+the geometrically **fixed, sharp re-entrant corner** (a stress singularity in
+every design), it is a **raw max** dominated by single-element spikes, and it
+carries **mesh-to-mesh noise** (~25–30% of the design signal) because every
+design is independently remeshed.
+
+**Falsification fixes worked.** Filleting the re-entrant corner (radius 10) makes
+the stress **mesh-convergent** (refinement 0.214→0.198→0.195, vs the sharp
+corner's divergent 0.294→0.284→0.243) and design-sensitive; averaging the HF over
+3 mesh seeds suppresses the noise. Re-running the EA then **does improve** the
+designs — best max-stress at matched volume drops **~4–5% at V≈0.40–0.45**, and
+hypervolume rises **monotonically (+8.7%)**, vs *zero* matched-volume gain with
+the sharp corner. The diagnosis is confirmed: the singular corner + mesh noise
+were the blockers.
+
+<p align="center"><img src="assets/lbracket_results_fillet.png" width="85%"/></p>
+
+The gains are modest (compressed surrogate; compliance-LF; residual noise;
+raw-max not p-norm) — full numbers and analysis are in
+[`ADVERSARIAL_REVIEW.md`](ADVERSARIAL_REVIEW.md).
 
 ## The benchmark (Section 5.1, Fig. 4a)
 

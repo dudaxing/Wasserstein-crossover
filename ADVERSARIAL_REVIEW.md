@@ -84,5 +84,39 @@ is fixable, but the fixes change the problem and must be done deliberately — n
 hidden behind a +6% HV number.
 
 ---
-*Update:* falsification #1 (fillet) + #2 (seed-averaged HF) results are appended
-below once run.
+
+## 8. Falsification results (diagnosis confirmed)
+
+Applied fix #1 (fillet the re-entrant corner, radius r=10) + fix #2 (average the
+HF over 3 mesh seeds), then re-ran the same EA.
+
+**Fix #1 makes the objective well-posed.** Solid L-bracket, refining `minedge`
+5→3→2:
+- sharp corner: 0.294 → 0.284 → 0.243 (divergent/non-monotone — singular);
+- fillet r=10: 0.214 → 0.198 → 0.195 (**mesh-convergent**), and the max moves
+  onto the fillet (corner-dist ~6 — design-sensitive), not the singular corner.
+
+**The EA now improves** (it did not before). Best max-stress at matched volume,
+initial (LF) vs final:
+
+| volume band | initial J₁ | final J₁ | change |
+|---|---|---|---|
+| 0.30 | 0.3044 | 0.3044 | 0% |
+| 0.35 | 0.2798 | 0.2798 | 0% |
+| **0.40** | 0.2768 | **0.2652** | **−4.2%** |
+| **0.45** | 0.2570 | **0.2449** | **−4.7%** |
+| 0.50 | 0.2420 | 0.2407 | −0.5% |
+
+Hypervolume rises **monotonically** to **+8.7%** (vs the sharp-corner run's
+noisy, non-monotone +6% with *zero* matched-volume gain). So the two root causes
+identified in §2 — the fixed singular corner and mesh-to-mesh noise — were indeed
+the blockers; removing them unlocks real (if modest) stress reduction.
+
+**Honest scope of the positive result.** The gains are ~4–5% at intermediate
+volume, not dramatic. Remaining limiters: (i) only 3-seed averaging (residual
+noise), (ii) compliance-LF initial designs are already decent for stress, (iii)
+the structured→body-fitted resampling still adds boundary noise, (iv) raw-max
+(not DPTO's p-norm) is still used. Global min J₁ stays ~flat because it lives at
+the high-volume end where there is little headroom; the gains are at the knee,
+visible only in the matched-volume metric — itself a lesson: **report
+matched-volume best-J₁, not global min J₁ or raw HV.**
