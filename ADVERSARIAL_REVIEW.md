@@ -85,6 +85,8 @@ hidden behind a +6% HV number.
 
 ---
 
+> **RETRACTION (2026-06-29):** the L-bracket numbers in §8–§9 below were computed with a body-fitted HF that had two P0 bugs (unsupported fixed end; mesh-dependent load). They are **contaminated and retracted**. The bugs are now fixed/verified (see ADVERSARIAL_PROJECT_REVIEW.md §11); a clean re-run supersedes these.
+
 ## 8. Falsification results (diagnosis confirmed)
 
 Applied fix #1 (fillet the re-entrant corner, radius r=10) + fix #2 (average the

@@ -280,19 +280,25 @@ def lbracket_fixed_passive(BDY, lpd, lload, h, r_fillet=0.0):
     return np.unique(fp, axis=0)
 
 
-def lbracket_bcs(p, BDY, lpd, lload, F0=1.0):
+def lbracket_bcs(p, BDY, lpd, lload, F0=1.0, h=1.0):
     """L-bracket BCs (port of DPTO FEA): fix the top edge of the vertical arm
-    (y=L, x<=lpd) in both directions; apply a downward load on the strip
-    y=lpd, x in [L-lload, L]."""
+    (y=L, x<=lpd) in both directions; apply a downward distributed load on the
+    strip y=lpd, x in [L-lload, L].
+
+    P0 fix: consistent nodal loads for a uniform traction F0/lload over the strip
+    -- interior node gets (F0/lload)*h, end nodes (F0/lload)*h/2 -- so the TOTAL
+    applied force is F0 regardless of the mesh spacing h (previously it scaled
+    with the node count, e.g. -0.5 at h=2 vs -1.0 at h=1)."""
     x1, y1 = BDY[1]
     fixed_nodes = np.where((p[:, 0] <= lpd + 1e-9) & np.isclose(p[:, 1], y1))[0]
     fixed_dofs = np.concatenate([2 * fixed_nodes, 2 * fixed_nodes + 1])
     F = np.zeros(2 * len(p))
+    t = F0 / lload                                   # traction (force per length)
     fn = np.where((p[:, 0] < x1) & (p[:, 0] > x1 - lload) & np.isclose(p[:, 1], lpd))[0]
     fn1 = np.where(((np.isclose(p[:, 0], x1)) | (np.isclose(p[:, 0], x1 - lload)))
                    & np.isclose(p[:, 1], lpd))[0]
-    F[2 * fn + 1] = -F0 / lload
-    F[2 * fn1 + 1] = -0.5 * F0 / lload
+    F[2 * fn + 1] = -t * h                            # interior tributary length h
+    F[2 * fn1 + 1] = -0.5 * t * h                     # end tributary length h/2
     return fixed_dofs, F, fixed_nodes, np.union1d(fn, fn1)
 
 
@@ -470,7 +476,7 @@ def hf_lbracket_stress(field, xn, yn, geom=None, rng_vec=None, seed=0,
         r_fillet=g.get("r_fillet", 0.0))
     # passive solid (load block) forced solid
     rho = rho.copy(); rho[ps] = 1.0
-    fixed_dofs, F, _, _ = lbracket_bcs(p, BDY, lpd, lload, g["F0"])
+    fixed_dofs, F, _, _ = lbracket_bcs(p, BDY, lpd, lload, g["F0"], h=h)
     U, vm, sig, area = fea_t3(p, t, rho, fixed_dofs, F,
                               g["E0"], g["Emin"], g["nu"])
     solid = rho > 0.5

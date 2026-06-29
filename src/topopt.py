@@ -119,16 +119,6 @@ class Mesh:
         return X.ravel(), Y.ravel()
 
 
-def make_cracked_plate_mesh(nelx):
-    """Right-half cracked plate: width 1, height 2, square elements.
-
-    nely = 2*nelx, h = 1/nelx so the physical domain is exactly [0,1]x[0,2],
-    matching the absolute coordinates used in `cracked_plate_bc`.
-    """
-    h = 1.0 / nelx
-    return Mesh(nelx, 2 * nelx, h)
-
-
 # --------------------------------------------------------------------------- #
 #  Density (hat) filter  -- paper Eqs. (14)-(16)
 # --------------------------------------------------------------------------- #
@@ -171,45 +161,6 @@ def filter_chain(H, Hs, dfdxphys):
     return np.asarray(H @ (dfdxphys / Hs)).ravel()
 
 
-# --------------------------------------------------------------------------- #
-#  Boundary conditions for the cracked plate (right-half model)
-# --------------------------------------------------------------------------- #
-def cracked_plate_bc(mesh: Mesh, load=1.0):
-    """Return (fixed_dofs, F) for the right-half cracked-plate problem.
-
-    Geometry: x in [0,1] (width 1), y in [0,2] (height 2).
-      * symmetry u_x = 0 on left edge (x=0) for y in [0,1];
-      * pin u_y = 0 at bottom-left corner (0,0);
-      * horizontal traction (+x) on the top strip y in [1.9, 2.0] of right edge.
-    """
-    h = mesh.h
-    fixed = []
-    # symmetry: left edge nodes with y <= 1.0  -> fix u_x
-    iy_sym = int(round(1.0 / h))
-    for iy in range(0, iy_sym + 1):
-        nd = mesh.node_id(0, iy)
-        fixed.append(2 * nd)            # u_x = 0
-    # pin bottom-left corner u_y
-    nd0 = mesh.node_id(0, 0)
-    fixed.append(2 * nd0 + 1)           # u_y = 0
-    fixed = np.unique(np.array(fixed, dtype=int))
-
-    # load: horizontal traction on right edge top strip y in [1.9, 2.0]
-    F = np.zeros(mesh.ndof)
-    iy_lo = int(round(1.9 / h))
-    iy_hi = mesh.nny - 1
-    strip_nodes = [mesh.node_id(mesh.nnx - 1, iy) for iy in range(iy_lo, iy_hi + 1)]
-    # consistent nodal forces for a uniform edge traction: total = load
-    nseg = len(strip_nodes) - 1
-    fval = load / nseg
-    for k, nd in enumerate(strip_nodes):
-        w = 1.0 if (0 < k < len(strip_nodes) - 1) else 0.5
-        F[2 * nd] += fval * w           # +x direction
-    return fixed, F
-
-
-# --------------------------------------------------------------------------- #
-#  FEM solve
 # --------------------------------------------------------------------------- #
 class FEM:
     def __init__(self, mesh: Mesh, fixed, F, nu=0.3, Emin=1e-9, E0=1.0, penal=3.0):

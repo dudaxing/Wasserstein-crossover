@@ -101,7 +101,7 @@ def lf_optimize_compliance(mesh, fem, H, Hs, V, passive, maxiter=40, move=0.2,
 class LBracketProblem:
     def __init__(self, nelx_lf=75, L=150.0, lpd=60.0, lload=6.0, penal=3.0,
                  hf_h=2.0, hf_minedge=3.0, hf_maxedge=40.0, hf_iter=80,
-                 load=1.0, r_fillet=10.0, hf_seeds=5,
+                 load=1.0, r_fillet=0.0, hf_seeds=5,
                  lf_method="stress", lf_P=8.0, lf_q=0.5):
         self.L, self.lpd, self.lload, self.r_fillet = L, lpd, lload, r_fillet
         self.lf_method, self.lf_P, self.lf_q = lf_method, lf_P, lf_q
@@ -154,11 +154,17 @@ class LBracketProblem:
 
     # ---- resample LF element density -> HF node grid ----
     def _to_hf_field(self, gamma):
+        # P0 fix: the LF density lives on element CENTROIDS ([h/2, L-h/2]); the HF
+        # node grid spans [0, L].  Edge-clamp the query points to the centroid
+        # range (nearest-edge extrapolation) so the domain boundary -- including
+        # the fixed support edge -- inherits the nearest interior density instead
+        # of being zero-filled (which previously left the support unattached).
         g = np.asarray(gamma, float).reshape(self.grid_shape)
         interp = RegularGridInterpolator((self._ey, self._ex), g,
-                                         bounds_error=False, fill_value=0.0)
-        pts = np.column_stack([self.yn.ravel(), self.xn.ravel()])
-        field = interp(pts).reshape(self.xn.shape)
+                                         bounds_error=False, fill_value=None)
+        qy = np.clip(self.yn.ravel(), self._ey[0], self._ey[-1])
+        qx = np.clip(self.xn.ravel(), self._ex[0], self._ex[-1])
+        field = interp(np.column_stack([qy, qx])).reshape(self.xn.shape)
         field[bf.passive_void_mask(self.xn, self.yn, self.lpd, self.r_fillet)] = 0.0
         return np.clip(field, 0.0, 1.0)
 

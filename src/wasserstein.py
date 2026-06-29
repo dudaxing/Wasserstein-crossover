@@ -30,8 +30,9 @@ spacings `h`) is
 
         K_ij = exp(-||x_i - x_j||^2 / eps)   <=>   sigma = sqrt(eps / 2) / h
 
-A NumPy backend is always available; an optional JAX backend (matching the
-paper's implementation) is used automatically if JAX is installed.
+Backend: NumPy + scipy.ndimage.gaussian_filter (the Gaussian-blur form of the
+2-Wasserstein Sinkhorn kernel).  (The paper uses a JAX/POT implementation; this
+reproduction does not — there is no JAX code path here.)
 """
 
 from __future__ import annotations

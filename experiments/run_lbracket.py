@@ -23,7 +23,7 @@ def main():
     ap.add_argument("--tmax", type=int, default=15)
     ap.add_argument("--npop", type=int, default=16)
     ap.add_argument("--nxo", type=int, default=16)
-    ap.add_argument("--r-fillet", type=float, default=10.0)
+    ap.add_argument("--r-fillet", type=float, default=0.0)   # sharp re-entrant corner
     ap.add_argument("--hf-seeds", type=int, default=3)
     ap.add_argument("--lf-method", default="stress", choices=["stress", "compliance"])
     ap.add_argument("--lf-maxiter", type=int, default=60)
@@ -49,7 +49,7 @@ def main():
         print(f"[cache] loaded {len(designs)} LF designs")
         cfg["init_designs"] = designs; cfg["init_info"] = info
     else:
-        print("[lf] generating L-bracket compliance population...")
+        print(f"[lf] generating L-bracket population (LF={args.lf_method})...")
         t0 = time.time()
         designs, info = prob.generate_initial_population(
             cfg["n_s1"], cfg["n_s2"], cfg["R_min"], cfg["R_max"],

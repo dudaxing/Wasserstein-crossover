@@ -24,94 +24,9 @@ from __future__ import annotations
 import time
 import numpy as np
 
-from topopt import (make_cracked_plate_mesh, FEM, build_density_filter,
-                    apply_filter, cracked_plate_bc, lf_optimize_stress)
 from selection import select, hypervolume, fast_non_dominated_sort
 from wasserstein import (wasserstein_crossover, population_distance_matrix,
                          adaptive_eps, eps_to_sigma)
-
-
-# --------------------------------------------------------------------------- #
-#  2D cracked-plate stress-minimization problem (Section 5.1)
-# --------------------------------------------------------------------------- #
-class StressPlateProblem:
-    def __init__(self, nelx=100, load=1.0, penal=3.0, q_relax=0.5,
-                 R_h=0.01, P_lf=8.0, proj_beta=16.0, proj_eta=0.5,
-                 hard_binarize=True):
-        self.mesh = make_cracked_plate_mesh(nelx)
-        self.fixed, self.F = cracked_plate_bc(self.mesh, load=load)
-        self.fem = FEM(self.mesh, self.fixed, self.F, penal=penal)
-        self.q = q_relax
-        self.P_lf = P_lf
-        self.proj_beta = proj_beta
-        self.proj_eta = proj_eta
-        self.hard_binarize = hard_binarize
-        self.grid_shape = (self.mesh.nely, self.mesh.nelx)
-        self.n = self.mesh.nel
-        # HF smoothing filter (Section 4.2; substitute for the PDE filter Eq.17)
-        self.H_hf, self.Hs_hf = build_density_filter(self.mesh, R=max(R_h, self.mesh.h * 1.5))
-        # elements where material is enforced solid (Dirichlet gamma_hat=1):
-        #   load strip (right edge, top 0.1) and support edge (left, y<=1)
-        self.solid_mask = self._solid_mask()
-
-    def _solid_mask(self):
-        m = self.mesh
-        mask = np.zeros(self.n, dtype=bool)
-        ex_load = m.nelx - 1
-        ey_lo = int(round(1.9 / m.h))
-        for ey in range(ey_lo, m.nely):
-            mask[ey * m.nelx + ex_load] = True
-        ex_sup = 0
-        ey_hi = int(round(1.0 / m.h))
-        for ey in range(0, ey_hi):
-            mask[ey * m.nelx + ex_sup] = True
-        return mask
-
-    # ---- LF optimization: generate the initial population ----
-    def generate_initial_population(self, n_s1, n_s2, R_min, R_max, V_min, V_max,
-                                    maxiter=60, move=0.05, verbose=False):
-        s1 = np.linspace(0, 1, n_s1)
-        s2 = np.linspace(0, 1, n_s2)
-        designs, info = [], []
-        k = 0
-        for a in s1:
-            R = R_min + (R_max - R_min) * a
-            H, Hs = build_density_filter(self.mesh, R=R)
-            for b in s2:
-                V = V_min + (V_max - V_min) * b
-                rho, x = lf_optimize_stress(
-                    self.mesh, self.fem, H, Hs, V=V, P=self.P_lf, q=self.q,
-                    maxiter=maxiter, move=move, verbose=False)
-                designs.append(rho.copy())
-                info.append((R, V))
-                k += 1
-                if verbose:
-                    j, _, _ = self.hf_evaluate(rho)
-                    print(f"  LF {k:3d}/{n_s1*n_s2}: R={R:.3f} V={V:.2f} "
-                          f"-> J1={j[0]:.2f} J2={j[1]:.3f}")
-        return np.array(designs), info
-
-    def _project(self, rho):
-        """Smooth Heaviside projection ~ extracting the 0.5 isosurface (Sec 4.2)."""
-        b, eta = self.proj_beta, self.proj_eta
-        num = np.tanh(b * eta) + np.tanh(b * (rho - eta))
-        den = np.tanh(b * eta) + np.tanh(b * (1.0 - eta))
-        return num / den
-
-    # ---- HF evaluation: true max von Mises stress + volume fraction ----
-    def hf_evaluate(self, gamma):
-        rho = apply_filter(self.H_hf, self.Hs_hf, np.asarray(gamma).ravel())
-        if self.hard_binarize:
-            rho = (rho > self.proj_eta).astype(float)   # 0.5-isosurface (binary)
-        else:
-            rho = self._project(rho)              # smooth 0.5-isosurface
-        rho = rho.copy()
-        rho[self.solid_mask] = 1.0                # Dirichlet gamma_hat = 1
-        rho = np.clip(rho, 0.0, 1.0)
-        smax, sigma, U = self.fem.max_stress(rho, q=self.q)
-        J1 = smax                                 # maximum stress
-        J2 = float(rho.mean())                    # volume fraction
-        return np.array([J1, J2]), True, sigma
 
 
 # --------------------------------------------------------------------------- #
