@@ -23,9 +23,14 @@ def main():
     ap.add_argument("--tmax", type=int, default=15)
     ap.add_argument("--npop", type=int, default=16)
     ap.add_argument("--nxo", type=int, default=16)
+    ap.add_argument("--r-fillet", type=float, default=10.0)
+    ap.add_argument("--hf-seeds", type=int, default=3)
+    ap.add_argument("--tag", default="fillet")
     args = ap.parse_args()
+    tag = args.tag
 
-    prob = LBracketProblem(nelx_lf=75, hf_h=2.0, hf_minedge=3.0, hf_iter=80)
+    prob = LBracketProblem(nelx_lf=75, hf_h=2.0, hf_minedge=3.0, hf_iter=80,
+                           r_fillet=args.r_fillet, hf_seeds=args.hf_seeds)
     cfg = dict(seed=0, n_s1=3, n_s2=6, R_min=2 * prob.mesh.h, R_max=5 * prob.mesh.h,
                V_min=0.30, V_max=0.55, lf_maxiter=40, lf_move=0.2,
                N_pop=args.npop, N_xo=args.nxo, t_max=args.tmax,
@@ -33,7 +38,7 @@ def main():
                sel_mode="diversity")
 
     # cache the (deterministic) LF population
-    cache = os.path.join(OUT, "lbr_initpop.npz")
+    cache = os.path.join(OUT, f"lbr_initpop_{tag}.npz")
     if os.path.exists(cache):
         d = np.load(cache, allow_pickle=True)
         designs, info = d["designs"], list(d["info"])
@@ -66,7 +71,7 @@ def main():
     ax[1].plot(P[:, 1], P[:, 0], "-o", ms=4, c="C3", label="optimized (Wasserstein)")
     ax[1].set_xlabel("$J_2$ volume fraction"); ax[1].set_ylabel("$J_1$ max von Mises")
     ax[1].set_title("Objective space"); ax[1].legend(); ax[1].grid(alpha=0.3)
-    fig.tight_layout(); fig.savefig(os.path.join(OUT, "lbracket_results.png"), dpi=130)
+    fig.tight_layout(); fig.savefig(os.path.join(OUT, f"lbracket_results_{tag}.png"), dpi=130)
     print("saved results/lbracket_results.png")
 
     # representative initial vs optimized at similar volume
@@ -75,7 +80,7 @@ def main():
     io = int(np.argmin(np.abs(initF[:, 1] - target)))
     oo = fr[int(np.argmin(np.abs(F[fr, 1] - initF[io, 1])))]
     fig, ax = plt.subplots(1, 2, figsize=(11, 5.5))
-    for col, (g, tag) in enumerate([(designs[io], "initial (LF)"),
+    for col, (g, lbl) in enumerate([(designs[io], "initial (LF)"),
                                     (res["population"][oo], "optimized (Wasserstein)")]):
         fld = prob._to_hf_field(g)
         J1, J2, mesh = bf.hf_lbracket_stress(fld, prob.xn, prob.yn, geom=prob.hf_geom,
@@ -85,12 +90,12 @@ def main():
         tp = ax[col].tripcolor(p[:, 0], p[:, 1], t,
                                facecolors=np.clip(vm, 0, np.nanpercentile(vm, 99)),
                                cmap="jet", edgecolors="none")
-        ax[col].set_title(f"{tag}\nJ1={J1:.3f}, J2={J2:.3f}"); ax[col].set_aspect("equal"); ax[col].axis("off")
+        ax[col].set_title(f"{lbl}\nJ1={J1:.3f}, J2={J2:.3f}"); ax[col].set_aspect("equal"); ax[col].axis("off")
     fig.suptitle("L-bracket: initial vs optimized (body-fitted HF stress)")
-    fig.tight_layout(); fig.savefig(os.path.join(OUT, "lbracket_compare.png"), dpi=130)
+    fig.tight_layout(); fig.savefig(os.path.join(OUT, f"lbracket_compare_{tag}.png"), dpi=130)
     print("saved results/lbracket_compare.png")
 
-    np.savez(os.path.join(OUT, "lbr_result.npz"), population=res["population"],
+    np.savez(os.path.join(OUT, f"lbr_result_{tag}.npz"), population=res["population"],
              F=F, hv_hist=hv, initF=initF, wall_time=res["wall_time"])
 
 

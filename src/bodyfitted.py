@@ -259,24 +259,22 @@ def _nearest_dist(pts, ref):
     return cKDTree(ref).query(pts, k=1)[0]
 
 
-def lbracket_fixed_passive(BDY, lpd, lload, h):
+def lbracket_fixed_passive(BDY, lpd, lload, h, r_fillet=0.0):
     """Fixed boundary nodes for the L-bracket: the L outer perimeter plus the
-    internal passive-void boundary edges, sampled at spacing h.  Having explicit
-    boundary nodes guarantees straight edges and that the BC/load nodes exist.
-    """
+    internal passive-void boundary (edges truncated by the fillet + the fillet
+    arc), sampled at spacing h.  Guarantees straight edges and that BC/load nodes
+    exist."""
     x0, y0 = BDY[0]; x1, y1 = BDY[1]
-    def seg(ax_const, val, lo, hi, axis):
+    def seg(val, lo, hi, axis):
         s = np.arange(lo, hi + 1e-9, h)
         col = np.full_like(s, val)
         return np.column_stack([col, s]) if axis == "x" else np.column_stack([s, col])
     parts = [
-        seg("x", x0, y0, y1, "x"),               # left edge x=0
-        seg("y", y0, x0, x1, "y"),               # bottom edge y=0
-        seg("x", x0, y0, y1, "x"),               # (placeholder, dedup later)
-        seg("y", y1, x0, lpd, "y"),              # top of vertical arm y=L, x<=lpd
-        seg("x", x1, y0, lpd, "x"),              # right of horizontal arm x=L, y<=lpd
-        seg("x", lpd, lpd, y1, "x"),             # internal edge x=lpd, y in [lpd,L]
-        seg("y", lpd, lpd, x1, "y"),             # internal edge y=lpd, x in [lpd,L]
+        seg(x0, y0, y1, "x"),                    # left edge x=0
+        seg(y0, x0, x1, "y"),                    # bottom edge y=0
+        seg(y1, x0, lpd, "y"),                   # top of vertical arm y=L, x<=lpd
+        seg(x1, y0, lpd, "x"),                   # right of horizontal arm x=L, y<=lpd
+        _internal_boundary(lpd, x1, r_fillet, h),  # internal void boundary (+ fillet)
     ]
     fp = np.vstack(parts)
     return np.unique(fp, axis=0)
@@ -300,7 +298,7 @@ def lbracket_bcs(p, BDY, lpd, lload, F0=1.0):
 
 def generate_bodyfitted_mesh(contour_pts, BDY, lpd, lload, h, minedge, maxedge,
                              dens_interp=None, rng_vec=None, n_iter=200,
-                             seed=0):
+                             seed=0, r_fillet=0.0):
     """Body-fitted triangular mesh of the L-bracket design box conforming to the
     material contour.  Mirrors DPTO's GenerateMesh body-fitted branch.
 
@@ -323,7 +321,7 @@ def generate_bodyfitted_mesh(contour_pts, BDY, lpd, lload, h, minedge, maxedge,
     """
     from scipy.spatial import Delaunay
     x0, y0 = BDY[0]; x1, y1 = BDY[1]
-    fixed_passive = lbracket_fixed_passive(BDY, lpd, lload, h)
+    fixed_passive = lbracket_fixed_passive(BDY, lpd, lload, h, r_fillet)
 
     # background hex-like point grid
     xs = np.arange(x0, x1 + 1e-9, h)
@@ -333,12 +331,11 @@ def generate_bodyfitted_mesh(contour_pts, BDY, lpd, lload, h, minedge, maxedge,
     pi = np.column_stack([X.ravel(), Y.ravel()])
     pi = pi[(pi[:, 0] <= x1) & (pi[:, 1] <= y1)]
 
-    # remove contour points too close to the internal passive boundaries
+    # remove contour points too close to the internal passive (void) boundary
     c = contour_pts
     if len(c):
-        near = ((np.abs(c[:, 0] - lpd) <= 1.0) & (c[:, 1] >= lpd - 0.2)) | \
-               ((np.abs(c[:, 1] - lpd) <= 1.0) & (c[:, 0] >= x1 - lload - 1))
-        c = c[~near]
+        ib = _internal_boundary(lpd, x1, r_fillet, h)
+        c = c[_nearest_dist(c, ib) > 1.2 * h]
 
     cset = np.vstack([fixed_passive, c]) if len(c) else fixed_passive
     cset = np.unique(cset, axis=0)
@@ -394,7 +391,7 @@ def generate_bodyfitted_mesh(contour_pts, BDY, lpd, lload, h, minedge, maxedge,
 
     t = Delaunay(p).simplices
     cen = (p[t[:, 0]] + p[t[:, 1]] + p[t[:, 2]]) / 3.0
-    pv = (cen[:, 0] > lpd) & (cen[:, 1] > lpd)
+    pv = passive_void_mask(cen[:, 0], cen[:, 1], lpd, r_fillet)
     ps = (cen[:, 0] > x1 - lload) & (cen[:, 1] > lpd - 1) & (cen[:, 1] < lpd)
     pd = ~(pv | ps)
     rho = np.ones(len(t))
@@ -416,7 +413,35 @@ def _unique_edges(t):
 #  L-bracket high-fidelity stress evaluation (body-fitted)
 # --------------------------------------------------------------------------- #
 LBRACKET = dict(L=150.0, lpd=60.0, lload=6.0, h=1.0, minedge=2.0, maxedge=40.0,
-                d1=0.5, d2=1.0, E0=1.0, Emin=1e-9, nu=0.3, F0=1.0)
+                d1=0.5, d2=1.0, E0=1.0, Emin=1e-9, nu=0.3, F0=1.0, r_fillet=0.0)
+
+
+def passive_void_mask(x, y, lpd, r_fillet=0.0):
+    """Upper-right passive void, with the re-entrant corner (lpd,lpd) rounded by
+    a fillet of radius `r_fillet` (material added in the corner wedge)."""
+    x = np.asarray(x); y = np.asarray(y)
+    base = (x > lpd) & (y > lpd)
+    if r_fillet <= 0:
+        return base
+    cx, cy = lpd + r_fillet, lpd + r_fillet
+    wedge = (x < cx) & (y < cy) & ((x - cx) ** 2 + (y - cy) ** 2 > r_fillet ** 2)
+    return base & ~wedge
+
+
+def _internal_boundary(lpd, L, r_fillet, h):
+    """Void-domain internal boundary: the two L edges (truncated by the fillet)
+    plus the fillet arc, sampled at spacing h."""
+    pts = []
+    yy = np.arange(lpd + r_fillet, L + 1e-9, h)
+    pts.append(np.column_stack([np.full_like(yy, lpd), yy]))        # x=lpd edge
+    xx = np.arange(lpd + r_fillet, L + 1e-9, h)
+    pts.append(np.column_stack([xx, np.full_like(xx, lpd)]))        # y=lpd edge
+    if r_fillet > 0:
+        cx, cy = lpd + r_fillet, lpd + r_fillet
+        th = np.linspace(np.pi, 1.5 * np.pi, max(4, int(round(r_fillet / h)) + 1))
+        pts.append(np.column_stack([cx + r_fillet * np.cos(th),
+                                    cy + r_fillet * np.sin(th)]))    # fillet arc
+    return np.vstack(pts)
 
 
 def hf_lbracket_stress(field, xn, yn, geom=None, rng_vec=None, seed=0,
@@ -441,7 +466,8 @@ def hf_lbracket_stress(field, xn, yn, geom=None, rng_vec=None, seed=0,
     c = clean_contour(segs, g["d1"], g["d2"])
     p, t, pv, ps, pd, rho, cen = generate_bodyfitted_mesh(
         c, BDY, lpd, lload, h, g["minedge"], g["maxedge"],
-        dens_interp=dens_interp, rng_vec=rng_vec, seed=seed, n_iter=n_iter)
+        dens_interp=dens_interp, rng_vec=rng_vec, seed=seed, n_iter=n_iter,
+        r_fillet=g.get("r_fillet", 0.0))
     # passive solid (load block) forced solid
     rho = rho.copy(); rho[ps] = 1.0
     fixed_dofs, F, _, _ = lbracket_bcs(p, BDY, lpd, lload, g["F0"])

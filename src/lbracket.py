@@ -24,12 +24,13 @@ import bodyfitted as bf
 # --------------------------------------------------------------------------- #
 #  Geometry & boundary conditions (structured LF grid)
 # --------------------------------------------------------------------------- #
-def make_lbracket(nelx, L=150.0, lpd=60.0):
-    """Square structured grid over [0,L]^2 with the upper-right passive void."""
+def make_lbracket(nelx, L=150.0, lpd=60.0, r_fillet=0.0):
+    """Square structured grid over [0,L]^2 with the upper-right passive void
+    (re-entrant corner optionally rounded by a fillet of radius r_fillet)."""
     h = L / nelx
     mesh = Mesh(nelx, nelx, h)
     cx, cy = mesh.ecoord[:, 0], mesh.ecoord[:, 1]
-    passive = (cx > lpd) & (cy > lpd)              # passive void elements
+    passive = bf.passive_void_mask(cx, cy, lpd, r_fillet)
     return mesh, passive
 
 
@@ -99,19 +100,21 @@ def lf_optimize_compliance(mesh, fem, H, Hs, V, passive, maxiter=40, move=0.2,
 class LBracketProblem:
     def __init__(self, nelx_lf=75, L=150.0, lpd=60.0, lload=6.0, penal=3.0,
                  hf_h=2.0, hf_minedge=3.0, hf_maxedge=40.0, hf_iter=80,
-                 load=1.0):
-        self.L, self.lpd, self.lload = L, lpd, lload
-        self.mesh, self.passive = make_lbracket(nelx_lf, L, lpd)
+                 load=1.0, r_fillet=10.0, hf_seeds=5):
+        self.L, self.lpd, self.lload, self.r_fillet = L, lpd, lload, r_fillet
+        self.mesh, self.passive = make_lbracket(nelx_lf, L, lpd, r_fillet)
         self.fixed, self.F = lbracket_bc(self.mesh, L, lpd, lload, load)
         self.fem = FEM(self.mesh, self.fixed, self.F, penal=penal)
         self.grid_shape = (self.mesh.nely, self.mesh.nelx)
         self.n = self.mesh.nel
+        self.hf_seeds = hf_seeds          # # of mesh seeds to average over (de-noise)
         # HF node grid + geometry
         self.hf_h = hf_h
         self.xn, self.yn = np.meshgrid(np.arange(0, L + hf_h * 0.5, hf_h),
                                        np.arange(0, L + hf_h * 0.5, hf_h))
         self.hf_geom = dict(L=L, lpd=lpd, lload=lload, h=hf_h,
-                            minedge=hf_minedge, maxedge=hf_maxedge)
+                            minedge=hf_minedge, maxedge=hf_maxedge,
+                            r_fillet=r_fillet)
         self._hf_iter = hf_iter
         # element-centroid axes for resampling LF -> HF
         self._ex = (np.arange(self.mesh.nelx) + 0.5) * self.mesh.h
@@ -148,17 +151,23 @@ class LBracketProblem:
                                          bounds_error=False, fill_value=0.0)
         pts = np.column_stack([self.yn.ravel(), self.xn.ravel()])
         field = interp(pts).reshape(self.xn.shape)
-        field[(self.xn > self.lpd) & (self.yn > self.lpd)] = 0.0   # passive void
+        field[bf.passive_void_mask(self.xn, self.yn, self.lpd, self.r_fillet)] = 0.0
         return np.clip(field, 0.0, 1.0)
 
     # ---- HF: body-fitted true max von Mises stress + volume fraction ----
+    #  averaged over several mesh seeds to suppress mesh-to-mesh noise.
     def hf_evaluate(self, gamma):
         field = self._to_hf_field(gamma)
-        geom = dict(self.hf_geom)
-        try:
-            J1, J2 = bf.hf_lbracket_stress(field, self.xn, self.yn, geom=geom,
-                                           seed=0, n_iter=self._hf_iter)
-            feasible = np.isfinite(J1) and J2 > 1e-3
-        except Exception as e:                      # degenerate offspring
+        j1s, j2s = [], []
+        for s in range(self.hf_seeds):
+            try:
+                J1, J2 = bf.hf_lbracket_stress(field, self.xn, self.yn,
+                                               geom=dict(self.hf_geom), seed=s,
+                                               n_iter=self._hf_iter)
+                if np.isfinite(J1) and J2 > 1e-3:
+                    j1s.append(J1); j2s.append(J2)
+            except Exception:
+                continue
+        if not j1s:
             return np.array([np.inf, np.inf]), False, None
-        return np.array([J1, J2]), bool(feasible), None
+        return np.array([np.mean(j1s), np.mean(j2s)]), True, None
