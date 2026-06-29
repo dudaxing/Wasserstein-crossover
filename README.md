@@ -320,9 +320,25 @@ were the blockers.
 
 <p align="center"><img src="assets/lbracket_results_fillet.png" width="85%"/></p>
 
-The gains are modest (compressed surrogate; compliance-LF; residual noise;
-raw-max not p-norm) — full numbers and analysis are in
-[`ADVERSARIAL_REVIEW.md`](ADVERSARIAL_REVIEW.md).
+**Stress LF + a selection-elitism fix (stronger result).** Switching the LF from
+compliance to a **density-method P-norm stress** optimization (the consistent
+surrogate for a stress HF) starts the population lower (min J₁ 0.222 vs 0.242)
+and — together with a selection fix the re-run exposed (the diversity truncation
+could discard the best-J₁ design; now per-objective extremes are always retained)
+— makes the EA genuinely effective: best max-stress at matched volume drops
+**−32% at V≈0.30, −10.5% at V≈0.50, −6% at V≈0.45**, with min J₁ now decreasing
+**monotonically** (0.222→0.208).
+
+<p align="center"><img src="assets/lbracket_results_stressLF_elite.png" width="85%"/></p>
+
+| matched-volume best J₁ | compliance LF | stress LF + elitism |
+|---|---|---|
+| V≈0.30 | 0% | **−32.2%** |
+| V≈0.45 | −4.7% | −6.1% |
+| V≈0.50 | −0.5% | **−10.5%** |
+
+Full numbers, the falsification chain, and remaining limiters (raw-max vs p-norm,
+mesh-noise, single seed) are in [`ADVERSARIAL_REVIEW.md`](ADVERSARIAL_REVIEW.md).
 
 ## The benchmark (Section 5.1, Fig. 4a)
 

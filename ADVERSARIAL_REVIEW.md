@@ -112,11 +112,42 @@ noisy, non-monotone +6% with *zero* matched-volume gain). So the two root causes
 identified in §2 — the fixed singular corner and mesh-to-mesh noise — were indeed
 the blockers; removing them unlocks real (if modest) stress reduction.
 
-**Honest scope of the positive result.** The gains are ~4–5% at intermediate
-volume, not dramatic. Remaining limiters: (i) only 3-seed averaging (residual
-noise), (ii) compliance-LF initial designs are already decent for stress, (iii)
-the structured→body-fitted resampling still adds boundary noise, (iv) raw-max
-(not DPTO's p-norm) is still used. Global min J₁ stays ~flat because it lives at
-the high-volume end where there is little headroom; the gains are at the knee,
-visible only in the matched-volume metric — itself a lesson: **report
-matched-volume best-J₁, not global min J₁ or raw HV.**
+**Honest scope (compliance-LF run).** Gains were ~4–5% at intermediate volume
+only. Lesson reinforced: **report matched-volume best-J₁, not global min J₁ or
+raw HV.**
+
+## 9. Stress LF + a selection-elitism fix (further improvement)
+
+Acting on §8(ii) ("compliance-LF is stress-blind"), the L-bracket LF was switched
+from compliance to a **density-method P-norm stress** optimization (with passive
+void). The stress LF both starts lower (initial min J₁ 0.222 vs compliance 0.242)
+and gives the EA a better basin.
+
+**A new flaw surfaced during this re-run** (the value of iterating): with the
+stress LF the EA reached min J₁ 0.209 by t≈6 but then **drifted back up to 0.221**
+— impossible under proper elitism. Cause: when Pareto front-0 exceeds the
+population, the farthest-point **diversity truncation could discard the best-J₁
+design**. Fix: `select` now always retains each front's per-objective extreme
+points (NSGA-II gives boundary points infinite crowding distance);
+`test_select_keeps_objective_extremes` guards it.
+
+**Result with stress LF + elitism fix** (same initial population, matched-volume
+best J₁, initial→final):
+
+| volume | compliance LF | stress LF (buggy sel.) | **stress LF + elitism** |
+|---|---|---|---|
+| 0.30 | 0% | −22.2% | **−32.2%** |
+| 0.35 | 0% | −21.9% | −19.4% |
+| 0.40 | 0% | 0% | 0% |
+| 0.45 | −4.7% | −4.5% | −6.1% |
+| 0.50 | −0.5% | −5.0% | **−10.5%** |
+| global min J₁ | flat | 0.222→0.221 (drifted, bug) | **0.222→0.208 (monotone)** |
+
+So: stress LF >> compliance LF, and the elitism fix both makes min J₁ monotone
+and improves the gains further (−32% at V≈0.30, −10.5% at V≈0.50). The
+body-fitted-HF EA is now a genuinely effective optimizer on this problem.
+
+**Remaining honesty.** Raw HV (+0.5%) is still a poor headline here (reference
+dominated by a degenerate low-volume extreme) — matched-volume best-J₁ is the
+right metric. Residual limiters unchanged: 3-seed averaging, structured→body-fitted
+resampling noise, raw-max (not p-norm) HF, single EA seed, CST element.
