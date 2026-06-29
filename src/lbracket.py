@@ -123,11 +123,37 @@ class LBracketProblem:
         self._ex = (np.arange(self.mesh.nelx) + 0.5) * self.mesh.h
         self._ey = (np.arange(self.mesh.nely) + 0.5) * self.mesh.h
 
+    # ---- random initial density field (for multistart diversity) ----
+    def _random_density(self, V, rng, smooth):
+        """A smooth random density field with mean ~V over the design region.
+        Low-frequency noise -> random *blobs* -> different topological basins,
+        so the same (R,V) seed converges to a genuinely different optimum."""
+        from scipy.ndimage import gaussian_filter
+        g = gaussian_filter(rng.random(self.grid_shape), sigma=smooth,
+                            mode="reflect").ravel()
+        design = ~self.passive
+        g = g - g[design].min()
+        if g[design].max() > 1e-12:
+            g = g / g[design].max()
+        cur = g[design].mean()
+        if cur > 1e-9:
+            g = g * (V / cur)
+        g = np.clip(g, 0.0, 1.0)
+        g[self.passive] = 0.0
+        return g
+
     # ---- LF: generate the diverse initial population ----
     def generate_initial_population(self, n_s1, n_s2, R_min, R_max, V_min, V_max,
-                                    maxiter=40, move=0.2, verbose=False):
+                                    maxiter=40, move=0.2, verbose=False,
+                                    random_init=True, seed=0, smooth=4.0):
+        """Seed over filter radius (n_s1) x volume fraction (n_s2), as in the
+        paper.  `random_init` additionally starts each LF solve from a smooth
+        random density (a different basin per seed) to boost the topological
+        diversity of the initial population beyond what (R,V) seeding alone
+        gives; set False for the paper-faithful uniform-start behaviour."""
         s1 = np.linspace(0, 1, n_s1)
         s2 = np.linspace(0, 1, n_s2)
+        rng = np.random.default_rng(seed)
         designs, info = [], []
         k = 0
         for a in s1:
@@ -135,10 +161,11 @@ class LBracketProblem:
             H, Hs = build_density_filter(self.mesh, R=R)
             for b in s2:
                 V = V_min + (V_max - V_min) * b
+                x0 = self._random_density(V, rng, smooth) if random_init else None
                 if self.lf_method == "stress":
                     rho, x = lf_optimize_stress(
                         self.mesh, self.fem, H, Hs, V, P=self.lf_P, q=self.lf_q,
-                        maxiter=maxiter, move=move, passive=self.passive)
+                        x_init=x0, maxiter=maxiter, move=move, passive=self.passive)
                 else:
                     rho, x = lf_optimize_compliance(self.mesh, self.fem, H, Hs, V,
                                                     self.passive, maxiter=maxiter,

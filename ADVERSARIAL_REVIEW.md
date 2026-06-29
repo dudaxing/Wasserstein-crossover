@@ -153,3 +153,43 @@ body-fitted-HF EA is now a genuinely effective optimizer on this problem.
 dominated by a degenerate low-volume extreme) — matched-volume best-J₁ is the
 right metric. Residual limiters unchanged: 3-seed averaging, structured→body-fitted
 resampling noise, raw-max (not p-norm) HF, single EA seed, CST element.
+
+## 10. Re-assessment of *this review* after the clean run (2026-06-29)
+
+Asked to re-judge this document against the corrected HF and the clean re-run
+(P0 bugs fixed + connectivity guard + finite HV reference; see
+ADVERSARIAL_PROJECT_REVIEW.md §11–§12). Verdict on the review itself:
+
+**Reliable — central conclusion confirmed.** §0/§1/§7 ("the EA makes ~zero useful
+progress on the sharp-corner L-bracket") is *exactly* what the clean run now
+shows: HV +0.0 %, matched-volume best-J₁ flat (one within-noise point). The
+review reached the right answer; the clean run puts it on correct physics.
+
+**But two corrections are owed:**
+
+1. **The §0–§2 numbers are stale/contaminated.** "min J₁ 0.2636→0.2636",
+   "J₁=0.414" etc. were computed on the *pre-P0-fix* HF (unsupported fixed end,
+   mesh-scaled load). They are superseded by the clean run (min J₁ 0.3737→0.3580,
+   one step then frozen 14 gens). Keep the qualitative claim; discard the digits.
+
+2. **§2(b) overstates the corner singularity.** It claims the max stress sits "*at*
+   the corner" for *all* designs → an untouchable floor. The clean diagnostic
+   refutes the universality: across the final population the argmax is near the
+   corner (dist 3–11) for only ~half the designs; the rest max out at the
+   support edge / load tip (dist 60–90). So the corner is a floor for *some*
+   designs, not a global one. The **dominant** blocker is something §2 could not
+   see (the LF was compliance then): with a **stress LF**, the LF seeds are
+   already near stress-optimal, so the **LF↔HF gap is near-zero** and barycenter
+   blends of stress-optimal parents are *systematically worse* (measured: 0/21
+   feasible offspring beat the incumbent; ~half are disconnected). That, not the
+   corner, is why the EA is flat.
+
+**§8–§9 stay retracted** (buggy HF + fillet) — that judgment was correct.
+
+**Net:** this review's *diagnosis direction* (noise + an unreachable floor) was
+partly right and partly superseded; its *conclusion* (no improvement here) was
+right. The improvement plan §6 remains the menu of real fixes, but the single
+most decisive next step is now the **crossover ablation** (Wasserstein vs linear
+vs none) to separate "operator ineffective" from "this problem, this LF, has no
+room", followed by restoring a genuine LF↔HF gap if the goal is to *show* the
+operator working.

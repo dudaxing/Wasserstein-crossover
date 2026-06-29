@@ -55,7 +55,13 @@ and a downward load on the right tip of the horizontal arm.
 
 - **LF (seeds the population):** density-method **P-norm von Mises stress**
   minimization on a structured grid with the passive void (SIMP + density filter
-  + MMA), seeded over filter radius and volume fraction.
+  + MMA), seeded over filter radius × volume fraction. The paper uses a
+  4 (radius) × 25 (volume) = **100-design** seeding grid (Table 1; N_pop = N_xo =
+  N_lf = 100, t_max = 100); the runner defaults to a tractable 4 × 12 = 48 and
+  exposes `--n-s1/--n-s2` for full scale. A randomized **multistart** (each seed
+  starts from a smooth random density) boosts topological diversity beyond what
+  (R,V) seeding alone gives (mean pairwise design distance +44 % in a small test);
+  disable with `--no-random-init`. The LF cache is keyed by a config hash.
 - **HF (drives the EA):** the design is resampled onto a node grid, the 0.5
   iso-contour is meshed body-fitted (DistMesh), and the **true max von Mises**
   (+ volume fraction) is evaluated on it, averaged over a few mesh seeds.
