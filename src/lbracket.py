@@ -14,6 +14,7 @@ The Wasserstein crossover operates on the LF structured grid; for HF the LF
 density is resampled onto the body-fitted node grid.
 """
 from __future__ import annotations
+import os
 import numpy as np
 from scipy.interpolate import RegularGridInterpolator
 
@@ -145,23 +146,42 @@ class LBracketProblem:
     # ---- LF: generate the diverse initial population ----
     def generate_initial_population(self, n_s1, n_s2, R_min, R_max, V_min, V_max,
                                     maxiter=40, move=0.2, verbose=False,
-                                    random_init=True, seed=0, smooth=4.0):
+                                    random_init=True, seed=0, smooth=4.0,
+                                    cache_path=None):
         """Seed over filter radius (n_s1) x volume fraction (n_s2), as in the
         paper.  `random_init` additionally starts each LF solve from a smooth
         random density (a different basin per seed) to boost the topological
         diversity of the initial population beyond what (R,V) seeding alone
-        gives; set False for the paper-faithful uniform-start behaviour."""
+        gives; set False for the paper-faithful uniform-start behaviour.
+
+        `cache_path` enables incremental checkpointing: completed designs are
+        saved after every solve, and a re-run resumes from there (the (R,V) job
+        order and the rng stream are deterministic, so skipped jobs only advance
+        the rng to stay aligned).  This protects the ~20 min LF generation
+        against interruptions."""
         s1 = np.linspace(0, 1, n_s1)
         s2 = np.linspace(0, 1, n_s2)
         rng = np.random.default_rng(seed)
         designs, info = [], []
+        if cache_path and os.path.exists(cache_path):
+            d = np.load(cache_path, allow_pickle=True)
+            designs, info = list(d["designs"]), list(d["info"])
+            if verbose:
+                print(f"  [lf-resume] {len(designs)}/{n_s1*n_s2} designs from checkpoint")
+        start_k = len(designs)
+        total = n_s1 * n_s2
         k = 0
         for a in s1:
             R = R_min + (R_max - R_min) * a
             H, Hs = build_density_filter(self.mesh, R=R)
             for b in s2:
                 V = V_min + (V_max - V_min) * b
+                # always draw the random field so the rng stream matches a fresh
+                # run even when this job is being skipped on resume
                 x0 = self._random_density(V, rng, smooth) if random_init else None
+                if k < start_k:
+                    k += 1
+                    continue
                 if self.lf_method == "stress":
                     rho, x = lf_optimize_stress(
                         self.mesh, self.fem, H, Hs, V, P=self.lf_P, q=self.lf_q,
@@ -173,9 +193,12 @@ class LBracketProblem:
                 designs.append(rho.copy())
                 info.append((R, V))
                 k += 1
+                if cache_path:
+                    np.savez(cache_path, designs=np.array(designs),
+                             info=np.array(info, dtype=object))
                 if verbose:
                     obj, _, _ = self.hf_evaluate(rho)
-                    print(f"  LF {k:3d}/{n_s1*n_s2}: R={R:.1f} V={V:.2f} "
+                    print(f"  LF {k:3d}/{total}: R={R:.1f} V={V:.2f} "
                           f"-> J1={obj[0]:.3f} J2={obj[1]:.3f}")
         return np.array(designs), info
 

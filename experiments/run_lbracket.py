@@ -48,7 +48,8 @@ def main():
                V_min=0.30, V_max=0.60, lf_maxiter=args.lf_maxiter, lf_move=args.lf_move,
                N_pop=args.npop, N_xo=args.nxo, t_max=args.tmax,
                eps_min=5.0, eps_max=50.0, wc_iter=300, wc_tol=1e-8,
-               sel_mode="diversity", random_init=args.random_init)
+               sel_mode="diversity", random_init=args.random_init,
+               checkpoint=os.path.join(OUT, f"lbr_ckpt_{tag}.npz"))
 
     # cache the LF population, keyed by a hash of the LF-relevant config so a
     # changed seeding / random-init / mesh never silently reloads a stale cache.
@@ -60,6 +61,7 @@ def main():
                   lf_method=args.lf_method, r_fillet=args.r_fillet, nelx=75)
     chash = hashlib.sha1(repr(sorted(lf_key.items())).encode()).hexdigest()[:8]
     cache = os.path.join(OUT, f"lbr_initpop_{tag}_{chash}.npz")
+    partial = os.path.join(OUT, f"lbr_initpop_{tag}_{chash}.partial.npz")
     if os.path.exists(cache):
         d = np.load(cache, allow_pickle=True)
         designs, info = d["designs"], list(d["info"])
@@ -72,8 +74,10 @@ def main():
             cfg["n_s1"], cfg["n_s2"], cfg["R_min"], cfg["R_max"],
             cfg["V_min"], cfg["V_max"], maxiter=cfg["lf_maxiter"],
             move=cfg["lf_move"], verbose=True,
-            random_init=cfg["random_init"], seed=cfg["seed"])
+            random_init=cfg["random_init"], seed=cfg["seed"], cache_path=partial)
         np.savez(cache, designs=designs, info=np.array(info, dtype=object))
+        if os.path.exists(partial):
+            os.remove(partial)               # finished -> drop the partial
         cfg["init_designs"] = designs; cfg["init_info"] = info
         print(f"[lf] {len(designs)} designs in {time.time()-t0:.0f}s")
 

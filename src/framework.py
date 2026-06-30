@@ -100,6 +100,13 @@ def run_framework(problem, cfg, crossover="wasserstein", rng=None, logger=print)
         logger(f"[t={t:3d}] |pop|={len(Theta)}  HV={hv:.5g}  "
                f"minJ1={F_pop[:,0].min():.3f}  minJ2={F_pop[:,1].min():.3f}")
 
+        # per-generation checkpoint: overwrite so any interruption leaves a
+        # usable, analyzable partial result (keys match the final result dict).
+        if cfg.get("checkpoint"):
+            np.savez(cfg["checkpoint"], population=np.array(Theta), F=F_pop,
+                     hv_hist=np.array(hv_hist), initF=init_objs, ref=ref,
+                     t=t, wall_time=time.time() - t0)
+
         if t == cfg["t_max"]:
             break
         # optional HV-based convergence
