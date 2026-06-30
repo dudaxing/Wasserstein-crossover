@@ -21,12 +21,41 @@ Problem-specific pieces (LF optimization and HF evaluation) are provided by a
 example of Section 5.1.
 """
 from __future__ import annotations
+import os
 import time
 import numpy as np
 
 from selection import select, hypervolume, fast_non_dominated_sort
 from wasserstein import (wasserstein_crossover, population_distance_matrix,
                          adaptive_eps, eps_to_sigma)
+
+
+def _make_offspring(Theta, rng, cfg, problem, crossover):
+    """Generate N_xo offspring from the current population by the chosen
+    crossover (Wasserstein barycenter, a generative model, or a callable)."""
+    Xpop = np.array(Theta)
+    D = population_distance_matrix(Xpop)
+    Dmax = D.max() if D.size else 1.0
+    Dmin = D[D > 0].min() if np.any(D > 0) else 0.0
+    is_trainable = hasattr(crossover, "fit") and hasattr(crossover, "crossover")
+    if is_trainable:
+        crossover.fit(Xpop)
+    offspring = []
+    for _ in range(cfg["N_xo"]):
+        i, j = rng.choice(len(Theta), size=2, replace=False)
+        lam = float(rng.uniform(0, 1))
+        if crossover == "wasserstein":
+            eps = adaptive_eps(D[i, j], Dmin, Dmax, cfg["eps_min"], cfg["eps_max"])
+            sigma = eps_to_sigma(eps, h=problem.mesh.h)
+            child = wasserstein_crossover(
+                Theta[i], Theta[j], problem.grid_shape, lam=lam, sigma=sigma,
+                n_iter=cfg.get("wc_iter", 500), tol=cfg.get("wc_tol", 1e-9), rng=rng)
+        elif is_trainable:
+            child = crossover.crossover(Theta[i], Theta[j], problem.grid_shape, lam, rng)
+        else:
+            child = crossover(Theta[i], Theta[j], problem.grid_shape, lam, rng)
+        offspring.append(child)
+    return offspring
 
 
 # --------------------------------------------------------------------------- #
@@ -62,7 +91,28 @@ def run_framework(problem, cfg, crossover="wasserstein", rng=None, logger=print)
     ref = None
     init_objs = None
 
-    for t in range(cfg["t_max"] + 1):
+    # ---- resume from a per-generation checkpoint (long runs that get killed) ----
+    t_start = 0
+    if cfg.get("resume") and cfg.get("checkpoint") and os.path.exists(cfg["checkpoint"]):
+        ck = np.load(cfg["checkpoint"], allow_pickle=True)
+        Theta = list(ck["population"])
+        F_pop = ck["F"]
+        hv_hist = list(ck["hv_hist"])
+        init_objs = ck["initF"]
+        ref = ck["ref"]
+        t_done = int(ck["t"])
+        if "rng_state" in ck.files:                 # exact continuation when present
+            try:
+                rng.bit_generator.state = ck["rng_state"].item()
+            except Exception:
+                pass
+        logger(f"[resume] checkpoint t={t_done}; continuing to {cfg['t_max']}")
+        # regenerate the offspring that generation t_done would have produced,
+        # so the resumed loop re-enters exactly at the HF-eval of generation t_done+1
+        Theta_tmp = _make_offspring(Theta, rng, cfg, problem, crossover)
+        t_start = t_done + 1
+
+    for t in range(t_start, cfg["t_max"] + 1):
         # ---- (a) HF evaluation of the temporary set ----
         F_tmp = []
         for g in Theta_tmp:
@@ -105,7 +155,8 @@ def run_framework(problem, cfg, crossover="wasserstein", rng=None, logger=print)
         if cfg.get("checkpoint"):
             np.savez(cfg["checkpoint"], population=np.array(Theta), F=F_pop,
                      hv_hist=np.array(hv_hist), initF=init_objs, ref=ref,
-                     t=t, wall_time=time.time() - t0)
+                     t=t, wall_time=time.time() - t0,
+                     rng_state=np.array(rng.bit_generator.state, dtype=object))
 
         if t == cfg["t_max"]:
             break
@@ -117,35 +168,7 @@ def run_framework(problem, cfg, crossover="wasserstein", rng=None, logger=print)
                 break
 
         # ---- (e) crossover -> N_xo offspring ----
-        Xpop = np.array(Theta)
-        D = population_distance_matrix(Xpop)
-        Dmax = D.max() if D.size else 1.0
-        Dmin = D[D > 0].min() if np.any(D > 0) else 0.0
-
-        # generative crossovers (e.g. VAE) are retrained on the population
-        is_trainable = hasattr(crossover, "fit") and hasattr(crossover, "crossover")
-        if is_trainable:
-            crossover.fit(Xpop)
-
-        offspring = []
-        for _ in range(cfg["N_xo"]):
-            i, j = rng.choice(len(Theta), size=2, replace=False)
-            lam = float(rng.uniform(0, 1))
-            if crossover == "wasserstein":
-                eps = adaptive_eps(D[i, j], Dmin, Dmax,
-                                   cfg["eps_min"], cfg["eps_max"])
-                sigma = eps_to_sigma(eps, h=problem.mesh.h)
-                child = wasserstein_crossover(
-                    Theta[i], Theta[j], problem.grid_shape, lam=lam,
-                    sigma=sigma, n_iter=cfg.get("wc_iter", 500),
-                    tol=cfg.get("wc_tol", 1e-9), rng=rng)
-            elif is_trainable:
-                child = crossover.crossover(Theta[i], Theta[j],
-                                            problem.grid_shape, lam, rng)
-            else:
-                child = crossover(Theta[i], Theta[j], problem.grid_shape, lam, rng)
-            offspring.append(child)
-        Theta_tmp = offspring
+        Theta_tmp = _make_offspring(Theta, rng, cfg, problem, crossover)
 
     return dict(
         problem=problem, population=np.array(Theta), F=F_pop,

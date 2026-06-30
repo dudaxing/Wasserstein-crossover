@@ -49,7 +49,7 @@ def main():
                N_pop=args.npop, N_xo=args.nxo, t_max=args.tmax,
                eps_min=5.0, eps_max=50.0, wc_iter=300, wc_tol=1e-8,
                sel_mode="diversity", random_init=args.random_init,
-               checkpoint=os.path.join(OUT, f"lbr_ckpt_{tag}.npz"))
+               checkpoint=os.path.join(OUT, f"lbr_ckpt_{tag}.npz"), resume=True)
 
     # cache the LF population, keyed by a hash of the LF-relevant config so a
     # changed seeding / random-init / mesh never silently reloads a stale cache.
