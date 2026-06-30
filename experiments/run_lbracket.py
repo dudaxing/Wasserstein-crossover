@@ -81,7 +81,14 @@ def main():
         cfg["init_designs"] = designs; cfg["init_info"] = info
         print(f"[lf] {len(designs)} designs in {time.time()-t0:.0f}s")
 
-    initF = np.array([prob.hf_evaluate(g)[0] for g in designs])
+    # initial-population HF objectives (for the figures).  Reuse them from the
+    # EA checkpoint on a resume so we don't redundantly re-evaluate 100 designs.
+    ck_path = cfg["checkpoint"]
+    if cfg.get("resume") and os.path.exists(ck_path):
+        initF = np.load(ck_path, allow_pickle=True)["initF"]
+        print(f"[resume] reusing initF for {len(initF)} designs from checkpoint")
+    else:
+        initF = np.array([prob.hf_evaluate(g)[0] for g in designs])
     res = run_framework(prob, cfg, crossover="wasserstein")
     F = res["F"]
     print(f"\nwall={res['wall_time']:.0f}s  initial minJ1={initF[:,0].min():.4f}  "
