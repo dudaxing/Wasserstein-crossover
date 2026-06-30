@@ -16,18 +16,29 @@ a **body-fitted-mesh high-fidelity (HF) stress model** ported from
 > Only original code is in this repo; neither paper's PDF/source is redistributed.
 
 > **⚠️ Status / honesty.** This is a *prototype*, not a 1:1 numerical
-> reproduction of either paper. The most defensible result is the **operator
-> level** (the Wasserstein barycenter transports material and can produce
-> offspring that beat their parents). An external review found two P0 integration
-> bugs in the body-fitted HF (the fixed support became void; the applied load
-> scaled with mesh spacing); both are now fixed and verified (below), and a
-> connectivity guard makes the HF robust to disconnected offspring (no more
-> solver segfaults). **The clean re-run verdict is negative:** on the
-> physically-correct sharp-corner L-bracket with a stress LF, the Wasserstein-
-> crossover EA does **not** meaningfully improve designs (HV +0.0%, matched-volume
-> best-J₁ flat except one within-noise point). The earlier "−32 %" improvement
-> numbers were artifacts of the buggy HF plus a fillet and are **retracted**. See
-> [§12 of the project review](ADVERSARIAL_PROJECT_REVIEW.md) for the mechanism.
+> reproduction of either paper. Two P0 integration bugs in the body-fitted HF
+> (the fixed support became void; the applied load scaled with mesh spacing) were
+> found by review and are now fixed and verified (below); a connectivity guard
+> makes the HF robust to disconnected offspring (no more solver segfaults).
+>
+> **Definitive verdict — paper-scale run (N_pop=N_xo=N_lf=100, t_max=100,
+> held-out-validated): the EA genuinely improves designs.** Earlier *small* runs
+> (16–18 designs, 15 gens) were flat, which I wrongly reported as a negative
+> result — that was a scale/diversity artifact. At paper scale with 100 diverse
+> seeds (randomized multistart), matched-volume best-J₁ drops **−6 % to −12 % on
+> held-out mesh seeds** (V≈0.42–0.57; up to −16 % on the training seeds, i.e.
+> partial winner's curse). Gains are most robust at higher volume (V≈0.53–0.57:
+> **−12 %**, essentially unchanged out-of-sample). Low-volume bands (V<0.42) stay
+> pinned at the re-entrant-corner singularity floor. Raw HV (+0.1 %) is a poor
+> headline (dominated by a degenerate low-volume extreme); **matched-volume
+> best-J₁ is the right metric.** The old "−32 %" numbers (buggy HF + fillet) stay
+> **retracted**. Full write-up: [§13 of the project review](ADVERSARIAL_PROJECT_REVIEW.md).
+
+<p align="center">
+  <img src="assets/lbracket_paper_compare.png" width="86%"/><br/>
+  <em>Paper-scale L-bracket, initial LF vs Wasserstein-optimized at equal volume
+  (J₂=0.515): peak von Mises redistributed away from the singular inner strut.</em>
+</p>
 
 ---
 
@@ -100,12 +111,13 @@ python experiments/run_lbracket.py       # L-bracket Wasserstein-crossover EA (s
 
 ## Honest limitations (tracked)
 
-- L-bracket EA **does not improve designs** in the clean re-run (sharp corner +
-  stress LF + fixed HF): HV +0.0 %, matched-volume best-J₁ flat. Root cause is a
-  near-zero LF↔HF gap (stress LF seeds are already near stress-optimal) — barycenter
-  blends of stress-optimal parents are systematically worse, and ~half are
-  disconnected. The decisive next experiment is a crossover ablation (Wasserstein
-  vs linear vs none).
+- L-bracket EA **improves designs at paper scale** (100 designs, 100 gens):
+  matched-volume best-J₁ **−6 to −12 % on held-out mesh seeds**. *Small* runs
+  (16–18 designs, 15 gens) were flat — a scale/diversity artifact, not a dead end.
+  Gains are partly inflated by winner's curse on the training seeds (−16 % →
+  −6 % out-of-sample at mid volume); report **held-out** numbers. Low-volume
+  bands stay at the re-entrant-corner floor. Still open: crossover ablation
+  (Wasserstein vs linear vs none), multiple EA seeds.
 - HF is a **boundary-refined Delaunay** with centroid solid/void classification —
   not a constrained contour-conforming mesh.
 - Mesh-to-mesh noise (~3–5% CV) is reduced by seed-averaging, not eliminated;

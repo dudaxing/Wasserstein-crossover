@@ -193,3 +193,17 @@ most decisive next step is now the **crossover ablation** (Wasserstein vs linear
 vs none) to separate "operator ineffective" from "this problem, this LF, has no
 room", followed by restoring a genuine LF↔HF gap if the goal is to *show* the
 operator working.
+
+## 11. Correction — the "no improvement" conclusion was *scale-dependent* (2026-06-30)
+
+§10 above concluded "no improvement here" and called that conclusion right. **It
+was right only at the small scale it was measured on, and is now overturned at
+paper scale.** Re-running at the paper's settings (N_pop=N_xo=N_lf=100,
+t_max=100; 100 LF seeds with randomized multistart for diversity) *does* improve
+designs: matched-volume best-J₁ drops **−6 % to −12 % on held-out mesh seeds**
+(−11 to −16.5 % on the training seeds → partial winner's curse), most robust at
+high volume (V≈0.53–0.57: −12 %, ~unchanged out-of-sample). So the flatness in
+§1–§2/§8–§9-clean was a **scale + diversity artifact** (too few seeds, too few
+generations), not the structural dead end §2(b) implied. The corner singularity
+still floors the *low-volume* bands, but the mid/high-volume front genuinely
+improves. See ADVERSARIAL_PROJECT_REVIEW.md §13 for the full held-out table.
